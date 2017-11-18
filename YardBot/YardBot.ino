@@ -18,10 +18,10 @@
 #define D7_pin  7
 
 LiquidCrystal_I2C  lcd(I2C_LCD,En_pin,Rw_pin,Rs_pin,D4_pin,D5_pin,D6_pin,D7_pin);
+
 // Mixed mode is for tank-style diff-drive robots.
 // Only Packet Serial actually has mixed mode, so this Simplified Serial library
 // emulates it (to allow easy switching between the two libraries).
-
 SabertoothSimplified ST(Serial3); 
 int PacketsRX[5], PacketsTX[4]; 
 unsigned long currentTime,timeOfLastGoodPacket = 0,timeOfLastTTL = 0,timeOfLastStatus=0;
@@ -42,7 +42,17 @@ typedef struct {
 
 speedControl Motor;
 
-// Serial3 is the Object which communicate with the Sabertooth H-Bridge
+
+//----------------------------------------------------------------------
+// Serial Port Usage
+//----------------------------------------------------------------------
+// Serial(TX0, RX0) - Adruino Serial Monitor.
+//----------------------------------------------------------------------
+// Serial1(TX1, RX1) - ?
+//----------------------------------------------------------------------
+// Serial2(TX2, RX2) - XBees
+//----------------------------------------------------------------------
+// Serial3(TX3, RX3) - Sabertooth H-Bridge
 // Connections to make:
 //   Arduino TX->13  ->  Sabertooth S1
 //   Arduino GND     ->  Sabertooth 0V
@@ -50,12 +60,15 @@ speedControl Motor;
 // For how to configure the Sabertooth, see the DIP Switch Wizard for
 //   http://www.dimensionengineering.com/datasheets/SabertoothDIPWizard/start.htm
 //   http://www.dimensionengineering.com/datasheets/SabertoothDIPWizard/nonlithium/serial/simple/single.htm
+//----------------------------------------------------------------------
 
 
 void setup() {
     Serial3.begin(9600);
     Serial2.begin(115200);
     Serial.begin(9600);
+    Serial.println("Starting!!!");
+
     for (int i=0; i<8; i++) {
         pinMode(i+22,OUTPUT);
     }
@@ -69,6 +82,7 @@ void setup() {
     delay(3000);
     allStop(); 
     lcdReset();
+    Serial.println("LCD Reset!!!");
 }
 
 void lcdReset() {
