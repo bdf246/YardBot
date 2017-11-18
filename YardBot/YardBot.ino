@@ -7,7 +7,7 @@
 #define I2C_ALTPRES 0x77
 #define I2C_TEMP 0x48
 // Find your address from I2C Scanner function and add it here:
-#define I2C_LCD 0x27                                                             
+#define I2C_LCD 0x27
 #define BACKLIGHT_PIN 3
 #define En_pin  2
 #define Rw_pin  1
@@ -24,7 +24,7 @@ LiquidCrystal_I2C  lcd(I2C_LCD,En_pin,Rw_pin,Rs_pin,D4_pin,D5_pin,D6_pin,D7_pin)
 
 SabertoothSimplified ST(Serial3); 
 int PacketsRX[5], PacketsTX[4]; 
-unsigned long currentTime,timeOfLastGoodPacket = 0,timeOfLastTTL = 0,timeOfLastStatus=0;                                                    
+unsigned long currentTime,timeOfLastGoodPacket = 0,timeOfLastTTL = 0,timeOfLastStatus=0;
 boolean XbeeData = false;   
 typedef struct {  
   int currentState;
@@ -46,21 +46,21 @@ speedControl Motor;
 // Connections to make:
 //   Arduino TX->13  ->  Sabertooth S1
 //   Arduino GND     ->  Sabertooth 0V
-//   Arduino VIN     ->  Sabertooth 5V (OPTIONAL, if you want the Sabertooth to power the Arduino)                                                                
+//   Arduino VIN     ->  Sabertooth 5V (OPTIONAL, if you want the Sabertooth to power the Arduino)
 // For how to configure the Sabertooth, see the DIP Switch Wizard for
 //   http://www.dimensionengineering.com/datasheets/SabertoothDIPWizard/start.htm
 //   http://www.dimensionengineering.com/datasheets/SabertoothDIPWizard/nonlithium/serial/simple/single.htm
 
 
 void setup() {
-  Serial3.begin(9600);                                                             
-  Serial2.begin(115200);                                                           
-  Serial.begin(9600);                                                              
-  for (int i=0; i<8; i++){                                                         
-    pinMode(i+22,OUTPUT);                                                          
-  }                                                                                
-  lcd.begin (20,4);                                                                
-  lcd.setBacklightPin(BACKLIGHT_PIN,POSITIVE);                                     
+  Serial3.begin(9600);
+  Serial2.begin(115200);
+  Serial.begin(9600);
+  for (int i=0; i<8; i++){
+    pinMode(i+22,OUTPUT);
+  }
+  lcd.begin (20,4);
+  lcd.setBacklightPin(BACKLIGHT_PIN,POSITIVE);
   lcd.setBacklight(HIGH);
   lcd.home (); // go home
   lcd.print("Robo Plow     ver4.4");
@@ -68,8 +68,8 @@ void setup() {
   lcd.print("Initializing..."); 
   delay(3000);
   allStop(); 
-  lcdReset();                                  
-}                                                     
+  lcdReset();
+}
 
 void lcdReset(){
   lcd.clear();
@@ -81,11 +81,11 @@ void lcdReset(){
 // it has received power levels for BOTH throttle and turning, since it
 // mixes the two together to get diff-drive power levels for both motors.
 // Stop robot if no good PacketsRX received within 200th of a seconds
-void allStop() {                                                                    
+void allStop() {
   // So, we set both to zero initially.
-  ST.drive(0);                                                                      
-  ST.turn(0);                                                                       
-// Serial.print('\n'); Serial.write("All STOP +++++");                               
+  ST.drive(0);
+  ST.turn(0);
+// Serial.print('\n'); Serial.write("All STOP +++++");
   lcd.setCursor(12,3);
   lcd.print("All Stop");
   PacketsRX[1]=0;
@@ -95,13 +95,13 @@ void allStop() {
 }
 
 void timeout() {
-  if (currentTime > (timeOfLastGoodPacket + 200)) {                                 
+  if (currentTime > (timeOfLastGoodPacket + 200)) {
     allStop();
     timeOfLastGoodPacket = currentTime;
   }
 
   // send stay alive command to receiver every 1 second.
-  if (currentTime > (timeOfLastTTL +1000)) {                                        
+  if (currentTime > (timeOfLastTTL +1000)) {
     PacketsTX[1]=100;  
     lcdReset();
     timeOfLastTTL=currentTime;
@@ -116,16 +116,16 @@ void timeout() {
 // PacketsRX[2] = x-axis (Steering) which is the same as y. X and Y is then converted using Map function to give it a range of -127 to 127, 0 is stop
 // PacketsRX[3] = Controls simultaneously 8 channel relay for moving linear actuators
 // PacketsRX[4] = Controls simultaneously 8 channel relay for lights and other devices
-void GetCommand() {                                                                 
-  static boolean recvInProgress = false;                                            
-  static int ndx = 0;                                                               
-  byte startMarker = 255;                                                           
-  byte endMarker = 254;                                                             
-  byte rc;                                                                          
+void GetCommand() {
+  static boolean recvInProgress = false;
+  static int ndx = 0;
+  byte startMarker = 255;
+  byte endMarker = 254;
+  byte rc;
 
   while (Serial2.available() > 0 && XbeeData == false){                             
 
-    rc = Serial2.read();                                                            
+    rc = Serial2.read();
     if (recvInProgress) {
       if (rc != endMarker){
         PacketsRX[ndx]=rc; 
@@ -163,9 +163,9 @@ void ParseData(){
       timeOfLastGoodPacket = currentTime;
       PacketsRX[1]=map(PacketsRX[1],0,120,-127,127);
       PacketsRX[2]=map(PacketsRX[2],0,120,127,-127);
-      DriveMotor();                                                      
-      lcd.setCursor(0,3);                                                           
-      lcd.print(PacketsRX[3]);                                                      
+      DriveMotor();
+      lcd.setCursor(0,3);
+      lcd.print(PacketsRX[3]);
       FindID(PacketsRX[3]);
     }
     XbeeData=false;
@@ -173,7 +173,7 @@ void ParseData(){
 }
 
 // Finds the corresponding ID's from a byte
-int FindID(int sum) {                                                               
+int FindID(int sum) {
   lcd.setCursor(0,3); 
   if (sum){
     for (int i=7; i>=0; i--){
@@ -238,7 +238,7 @@ void sendStatus(){
   PacketsTX[0]=0;
   PacketsTX[2]=0;
   PacketsTX[3]=0;
-  byte startMarker = 255;                                                           
+  byte startMarker = 255;
   byte endMarker = 254;
   for (int i=0;i<8;i++){
     if (relayA[i].currentState == HIGH) {
