@@ -27,17 +27,17 @@ int PacketsRX[5], PacketsTX[4];
 unsigned long currentTime,timeOfLastGoodPacket = 0,timeOfLastTTL = 0,timeOfLastStatus=0;
 boolean XbeeData = false;   
 typedef struct {  
-  int currentState;
-  long timer;
+    int currentState;
+    long timer;
 } relay_type;
 
 relay_type relayA[8]={{LOW,0},{LOW,0},{LOW,0},{LOW,0},{LOW,0},{LOW,0},{LOW,0},{LOW,0}};
 
 typedef struct {
-  unsigned long currentTime = 0;
-  unsigned long previousTime = millis();
-  int currentDrive = 0;
-  int currentTurn = 0;
+    unsigned long currentTime = 0;
+    unsigned long previousTime = millis();
+    int currentDrive = 0;
+    int currentTurn = 0;
 } speedControl;
 
 speedControl Motor;
@@ -53,28 +53,28 @@ speedControl Motor;
 
 
 void setup() {
-  Serial3.begin(9600);
-  Serial2.begin(115200);
-  Serial.begin(9600);
-  for (int i=0; i<8; i++){
-    pinMode(i+22,OUTPUT);
-  }
-  lcd.begin (20,4);
-  lcd.setBacklightPin(BACKLIGHT_PIN,POSITIVE);
-  lcd.setBacklight(HIGH);
-  lcd.home (); // go home
-  lcd.print("Robo Plow     ver4.4");
-  lcd.setCursor(0,1);
-  lcd.print("Initializing..."); 
-  delay(3000);
-  allStop(); 
-  lcdReset();
+    Serial3.begin(9600);
+    Serial2.begin(115200);
+    Serial.begin(9600);
+    for (int i=0; i<8; i++) {
+        pinMode(i+22,OUTPUT);
+    }
+    lcd.begin (20,4);
+    lcd.setBacklightPin(BACKLIGHT_PIN,POSITIVE);
+    lcd.setBacklight(HIGH);
+    lcd.home (); // go home
+    lcd.print("Robo Plow     ver4.4");
+    lcd.setCursor(0,1);
+    lcd.print("Initializing..."); 
+    delay(3000);
+    allStop(); 
+    lcdReset();
 }
 
-void lcdReset(){
-  lcd.clear();
-  lcd.home();
-  lcd.print("(X:");lcd.print(PacketsRX[1]);lcd.print(",Y:");lcd.print(PacketsRX[2]);lcd.print(") sum=");lcd.print(PacketsRX[0]);
+void lcdReset() {
+    lcd.clear();
+    lcd.home();
+    lcd.print("(X:");lcd.print(PacketsRX[1]);lcd.print(",Y:");lcd.print(PacketsRX[2]);lcd.print(") sum=");lcd.print(PacketsRX[0]);
 }
 
 // The Sabertooth won't act on mixed mode until
@@ -82,30 +82,30 @@ void lcdReset(){
 // mixes the two together to get diff-drive power levels for both motors.
 // Stop robot if no good PacketsRX received within 200th of a seconds
 void allStop() {
-  // So, we set both to zero initially.
-  ST.drive(0);
-  ST.turn(0);
+    // So, we set both to zero initially.
+    ST.drive(0);
+    ST.turn(0);
 // Serial.print('\n'); Serial.write("All STOP +++++");
-  lcd.setCursor(12,3);
-  lcd.print("All Stop");
-  PacketsRX[1]=0;
-  PacketsRX[2]=0;
-  PacketsRX[3]=0;
-  PacketsRX[4]=0;
+    lcd.setCursor(12,3);
+    lcd.print("All Stop");
+    PacketsRX[1]=0;
+    PacketsRX[2]=0;
+    PacketsRX[3]=0;
+    PacketsRX[4]=0;
 }
 
 void timeout() {
-  if (currentTime > (timeOfLastGoodPacket + 200)) {
-    allStop();
-    timeOfLastGoodPacket = currentTime;
-  }
+    if (currentTime > (timeOfLastGoodPacket + 200)) {
+        allStop();
+        timeOfLastGoodPacket = currentTime;
+    }
 
-  // send stay alive command to receiver every 1 second.
-  if (currentTime > (timeOfLastTTL +1000)) {
-    PacketsTX[1]=100;  
-    lcdReset();
-    timeOfLastTTL=currentTime;
-  }
+    // send stay alive command to receiver every 1 second.
+    if (currentTime > (timeOfLastTTL +1000)) {
+        PacketsTX[1]=100;  
+        lcdReset();
+        timeOfLastTTL=currentTime;
+    }
 }
 
 // Data received from Xbee is in byte 0-256. Sending a string requires multiple bytes even for 1 character and requires processing power
@@ -117,31 +117,30 @@ void timeout() {
 // PacketsRX[3] = Controls simultaneously 8 channel relay for moving linear actuators
 // PacketsRX[4] = Controls simultaneously 8 channel relay for lights and other devices
 void GetCommand() {
-  static boolean recvInProgress = false;
-  static int ndx = 0;
-  byte startMarker = 255;
-  byte endMarker = 254;
-  byte rc;
+    static boolean recvInProgress = false;
+    static int ndx = 0;
+    byte startMarker = 255;
+    byte endMarker = 254;
+    byte rc;
 
-  while (Serial2.available() > 0 && XbeeData == false){                             
-
-    rc = Serial2.read();
-    if (recvInProgress) {
-      if (rc != endMarker){
-        PacketsRX[ndx]=rc; 
-        ndx++;
-      }
-      else {        
-        XbeeData=true;
-        ndx=0;
-        recvInProgress = false;
-        break;
-      }
+    while (Serial2.available() > 0 && XbeeData == false) {
+        rc = Serial2.read();
+        if (recvInProgress) {
+            if (rc != endMarker) {
+                PacketsRX[ndx]=rc; 
+                ndx++;
+            }
+            else {
+                XbeeData=true;
+                ndx=0;
+                recvInProgress = false;
+                break;
+            }
+        }
+        else if (rc == startMarker) {
+            recvInProgress = true;
+        }
     }
-    else if (rc == startMarker) {
-      recvInProgress = true;
-    }
-  }
 }
 
 // A byte has a maximum size of 255, when receiving anything larger, the Arduino takes the difference of the value minus the maximum.
@@ -153,148 +152,147 @@ void GetCommand() {
 // corresponding IDs. For example: To turn on device ID 4, you issue a byte 4.  To turn on device 4 and 16, you take their sum which is 20.
 // Note: Since we use byte 254 and 255 as an EndMarker.
 
-void ParseData(){
-  int sum = PacketsRX[1]+PacketsRX[2]+PacketsRX[3]+PacketsRX[4];
-  if (XbeeData) {    
-    while (sum > 255){
-      sum -= 255; 
-    }               
-    if (PacketsRX[0]==sum) {                       
-      timeOfLastGoodPacket = currentTime;
-      PacketsRX[1]=map(PacketsRX[1],0,120,-127,127);
-      PacketsRX[2]=map(PacketsRX[2],0,120,127,-127);
-      DriveMotor();
-      lcd.setCursor(0,3);
-      lcd.print(PacketsRX[3]);
-      FindID(PacketsRX[3]);
+void ParseData() {
+    int sum = PacketsRX[1]+PacketsRX[2]+PacketsRX[3]+PacketsRX[4];
+    if (XbeeData) {    
+        while (sum > 255) {
+            sum -= 255; 
+        }
+        if (PacketsRX[0]==sum) {
+            timeOfLastGoodPacket = currentTime;
+            PacketsRX[1]=map(PacketsRX[1],0,120,-127,127);
+            PacketsRX[2]=map(PacketsRX[2],0,120,127,-127);
+            DriveMotor();
+            lcd.setCursor(0,3);
+            lcd.print(PacketsRX[3]);
+            FindID(PacketsRX[3]);
+        }
+        XbeeData=false;
     }
-    XbeeData=false;
-  }
 }
 
 // Finds the corresponding ID's from a byte
 int FindID(int sum) {
-  lcd.setCursor(0,3); 
-  if (sum){
-    for (int i=7; i>=0; i--){
-      if (sum >= pow(2,i)){
-        if (relayA[i].currentState == LOW){
-           relayA[i].timer=millis();
+    lcd.setCursor(0,3); 
+    if (sum) {
+        for (int i=7; i>=0; i--) {
+            if (sum >= pow(2,i)) {
+                if (relayA[i].currentState == LOW) {
+                   relayA[i].timer=millis();
+                }
+                relayA[i].currentState==HIGH;
+                sum -= pow(2,i);
+            } else {
+                if (relayA[i].currentState==HIGH and relayA[i].timer > 100) {
+                  relayA[i].currentState==LOW; 
+                }
+            }
+            digitalWrite(i=22, relayA[i].currentState);
         }
-        relayA[i].currentState==HIGH;
-        sum -= pow(2,i);
-      } else {
-        if (relayA[i].currentState==HIGH and relayA[i].timer > 100){
-          relayA[i].currentState==LOW; 
+    } else {
+        for (int i=7; i>=0; i--) {
+            if (relayA[i].currentState==HIGH and relayA[i].timer > 100) {
+              relayA[i].currentState==LOW;
+              digitalWrite(i=22, relayA[i].currentState); 
+            }
         }
-      }
-      digitalWrite(i=22, relayA[i].currentState);
-    }
-  } else {
-    for (int i=7; i>=0; i--){
-      if (relayA[i].currentState==HIGH and relayA[i].timer > 100){
-        relayA[i].currentState==LOW;
-        digitalWrite(i=22, relayA[i].currentState); 
-      }
-    }
-  } 
+    } 
 }
 
-void DriveMotor(){
-  const long interval=100;
-  Motor.currentTime = millis();
-  Motor.currentDrive = PacketsRX[2];
-  Motor.currentTurn = PacketsRX[1];
-  if (Motor.currentTime - Motor.previousTime >= interval){
-    Motor.previousTime = Motor.currentTime;
-    if (PacketsRX[2] > Motor.currentDrive)
-      Motor.currentDrive += 1;
-    if (PacketsRX[2] < Motor.currentDrive)
-      Motor.currentDrive -= 1;  
-    if (PacketsRX[1] > Motor.currentTurn)
-      Motor.currentTurn += 1;
-    if (PacketsRX[1] < Motor.currentTurn)
-      Motor.currentTurn -= 1;   
-  }
-  if (PacketsRX[2] == 0 && Motor.currentDrive != 0){
-    if (Motor.currentDrive > 0)
-      Motor.currentDrive -= 1;
-    if (Motor.currentDrive < 0)
-      Motor.currentDrive += 1;
-  }
-  if (PacketsRX[1] == 0 && Motor.currentTurn != 0){
-    if (Motor.currentTurn > 0)
-      Motor.currentTurn -= 1;
-    if (Motor.currentTurn < 0)
-      Motor.currentTurn += 1;
-  }
-  ST.drive(Motor.currentDrive);
-  ST.turn(Motor.currentTurn);
-  Serial.print('\n');Serial.print(PacketsRX[1]);Serial.print(',');Serial.print(PacketsRX[2]);Serial.print(',');Serial.print(PacketsRX[3]);Serial.print('*');
+void DriveMotor() {
+    const long interval=100;
+    Motor.currentTime = millis();
+    Motor.currentDrive = PacketsRX[2];
+    Motor.currentTurn = PacketsRX[1];
+    if (Motor.currentTime - Motor.previousTime >= interval) {
+        Motor.previousTime = Motor.currentTime;
+        if (PacketsRX[2] > Motor.currentDrive)
+            Motor.currentDrive += 1;
+        if (PacketsRX[2] < Motor.currentDrive)
+            Motor.currentDrive -= 1;  
+            if (PacketsRX[1] > Motor.currentTurn)
+            Motor.currentTurn += 1;
+        if (PacketsRX[1] < Motor.currentTurn)
+            Motor.currentTurn -= 1;   
+    }
+    if (PacketsRX[2] == 0 && Motor.currentDrive != 0) {
+        if (Motor.currentDrive > 0)
+            Motor.currentDrive -= 1;
+        if (Motor.currentDrive < 0)
+            Motor.currentDrive += 1;
+        }
+    if (PacketsRX[1] == 0 && Motor.currentTurn != 0) {
+        if (Motor.currentTurn > 0)
+            Motor.currentTurn -= 1;
+        if (Motor.currentTurn < 0)
+            Motor.currentTurn += 1;
+    }
+    ST.drive(Motor.currentDrive);
+    ST.turn(Motor.currentTurn);
+    Serial.print('\n');Serial.print(PacketsRX[1]);Serial.print(',');Serial.print(PacketsRX[2]);Serial.print(',');Serial.print(PacketsRX[3]);Serial.print('*');
 }
 
 // PacketsRX[0] = Checksum which is the sum of PacketsRX[1] + PacketsRX[2] + PacketsRX[3], this is used to verify if received data is good
-void sendStatus(){
-  PacketsTX[0]=0;
-  PacketsTX[2]=0;
-  PacketsTX[3]=0;
-  byte startMarker = 255;
-  byte endMarker = 254;
-  for (int i=0;i<8;i++){
-    if (relayA[i].currentState == HIGH) {
-      PacketsTX[2] += pow(2,i); 
+void sendStatus() {
+    PacketsTX[0]=0;
+    PacketsTX[2]=0;
+    PacketsTX[3]=0;
+    byte startMarker = 255;
+    byte endMarker = 254;
+    for (int i=0;i<8;i++) {
+        if (relayA[i].currentState == HIGH) {
+          PacketsTX[2] += pow(2,i); 
+        }
     }
-  }
-  PacketsTX[0]=PacketsTX[1] + PacketsTX[2] + PacketsTX[3];
-  if (currentTime > (timeOfLastStatus + 2500)){
-    Serial2.write(startMarker);
-    for (int i=0; i<4; i++) {
-      Serial2.write(PacketsTX[i]);
+    PacketsTX[0]=PacketsTX[1] + PacketsTX[2] + PacketsTX[3];
+    if (currentTime > (timeOfLastStatus + 2500)) {
+        Serial2.write(startMarker);
+        for (int i=0; i<4; i++) {
+          Serial2.write(PacketsTX[i]);
+        }
+        Serial2.write(endMarker);
+        timeOfLastStatus=currentTime; 
     }
-    Serial2.write(endMarker);
-    timeOfLastStatus=currentTime; 
-  }
 }
 
-void getTemp(){
-  float convertedtemp, correctedtemp;
-  Wire.requestFrom(I2C_TEMP,2);
-  while(Wire.available()){
-    int8_t msb=Wire.read();
-    int8_t lsb=Wire.read();
-    lsb=(lsb & 0x80) >> 7;
-    float f = msb+0.5*lsb-2;
-    lcd.setCursor(0,3);
-    lcd.print("Temp ");
-    lcd.print(f);
-    
-  }
+void getTemp() {
+    float convertedtemp, correctedtemp;
+    Wire.requestFrom(I2C_TEMP,2);
+    while(Wire.available()) {
+        int8_t msb=Wire.read();
+        int8_t lsb=Wire.read();
+        lsb=(lsb & 0x80) >> 7;
+        float f = msb+0.5*lsb-2;
+        lcd.setCursor(0,3);
+        lcd.print("Temp ");
+        lcd.print(f);
+    }
 }
 
-void i2cScan(){
-  byte error,address;
-   for (address =1; address < 127; address++){
-     Wire.beginTransmission(address);
-     error=Wire.endTransmission();
-     if (error == 0){
-       lcd.setCursor(0,3);
-       lcd.print("address 0x");
-       if (address<16)
-         lcd.print("0");
-       lcd.print(address,HEX);
-       delay (5000);
-     }
-   }  
+void i2cScan() {
+    byte error,address;
+     for (address =1; address < 127; address++) {
+         Wire.beginTransmission(address);
+         error=Wire.endTransmission();
+         if (error == 0) {
+             lcd.setCursor(0,3);
+             lcd.print("address 0x");
+             if (address<16)
+                 lcd.print("0");
+             lcd.print(address,HEX);
+             delay (5000);
+         }
+     }  
 }
 
 
 void loop()
 {
-  //i2cScan();
-  currentTime = millis();
-  GetCommand();
-  ParseData();
-  timeout();
-  sendStatus();
+    //i2cScan();
+    currentTime = millis();
+    GetCommand();
+    ParseData();
+    timeout();
+    sendStatus();
 }
 
