@@ -6,7 +6,8 @@
 #define I2C_LIGHT 0x39
 #define I2C_ALTPRES 0x77
 #define I2C_TEMP 0x48
-#define I2C_LCD 0x27                                                             // <<----- Add your address here.  Find it from I2C Scanner function
+// Find your address from I2C Scanner function and add it here:
+#define I2C_LCD 0x27                                                             
 #define BACKLIGHT_PIN 3
 #define En_pin  2
 #define Rw_pin  1
@@ -41,15 +42,25 @@ typedef struct {
 
 speedControl Motor;
 
+// Serial3 is the Object which communicate with the Sabertooth H-Bridge
+// Connections to make:
+//   Arduino TX->13  ->  Sabertooth S1
+//   Arduino GND     ->  Sabertooth 0V
+//   Arduino VIN     ->  Sabertooth 5V (OPTIONAL, if you want the Sabertooth to power the Arduino)                                                                
+// For how to configure the Sabertooth, see the DIP Switch Wizard for
+//   http://www.dimensionengineering.com/datasheets/SabertoothDIPWizard/start.htm
+//   http://www.dimensionengineering.com/datasheets/SabertoothDIPWizard/nonlithium/serial/simple/single.htm
+
+
 void setup() {
-  Serial3.begin(9600);                                                             // Serial3 is the Object which communicate with the Sabertooth H-Bridge
-  Serial2.begin(115200);                                                           // Connections to make:
-  Serial.begin(9600);                                                              //   Arduino TX->13  ->  Sabertooth S1
-  for (int i=0; i<8; i++){                                                         //   Arduino GND     ->  Sabertooth 0V
-    pinMode(i+22,OUTPUT);                                                          //   Arduino VIN     ->  Sabertooth 5V (OPTIONAL, if you want the Sabertooth to power the Arduino)                                                                
-  }                                                                                // For how to configure the Sabertooth, see the DIP Switch Wizard for
-  lcd.begin (20,4);                                                                //   http://www.dimensionengineering.com/datasheets/SabertoothDIPWizard/start.htm
-  lcd.setBacklightPin(BACKLIGHT_PIN,POSITIVE);                                     //   http://www.dimensionengineering.com/datasheets/SabertoothDIPWizard/nonlithium/serial/simple/single.htm
+  Serial3.begin(9600);                                                             
+  Serial2.begin(115200);                                                           
+  Serial.begin(9600);                                                              
+  for (int i=0; i<8; i++){                                                         
+    pinMode(i+22,OUTPUT);                                                          
+  }                                                                                
+  lcd.begin (20,4);                                                                
+  lcd.setBacklightPin(BACKLIGHT_PIN,POSITIVE);                                     
   lcd.setBacklight(HIGH);
   lcd.home (); // go home
   lcd.print("Robo Plow     ver4.4");
@@ -66,10 +77,15 @@ void lcdReset(){
   lcd.print("(X:");lcd.print(PacketsRX[1]);lcd.print(",Y:");lcd.print(PacketsRX[2]);lcd.print(") sum=");lcd.print(PacketsRX[0]);
 }
 
-void allStop() {                                                                    // The Sabertooth won't act on mixed mode until
-  ST.drive(0);                                                                      // it has received power levels for BOTH throttle and turning, since it
-  ST.turn(0);                                                                       // mixes the two together to get diff-drive power levels for both motors.
-// Serial.print('\n'); Serial.write("All STOP +++++");                               // So, we set both to zero initially.
+// The Sabertooth won't act on mixed mode until
+// it has received power levels for BOTH throttle and turning, since it
+// mixes the two together to get diff-drive power levels for both motors.
+// Stop robot if no good PacketsRX received within 200th of a seconds
+void allStop() {                                                                    
+  // So, we set both to zero initially.
+  ST.drive(0);                                                                      
+  ST.turn(0);                                                                       
+// Serial.print('\n'); Serial.write("All STOP +++++");                               
   lcd.setCursor(12,3);
   lcd.print("All Stop");
   PacketsRX[1]=0;
@@ -79,27 +95,37 @@ void allStop() {                                                                
 }
 
 void timeout() {
-  if (currentTime > (timeOfLastGoodPacket + 200)) {                                 // Stop robot if no good PacketsRX received within 200th of a seconds
+  if (currentTime > (timeOfLastGoodPacket + 200)) {                                 
     allStop();
     timeOfLastGoodPacket = currentTime;
   }
-  if (currentTime > (timeOfLastTTL +1000)) {                                        // send stay alive command to receiver every 1 second.
+
+  // send stay alive command to receiver every 1 second.
+  if (currentTime > (timeOfLastTTL +1000)) {                                        
     PacketsTX[1]=100;  
     lcdReset();
     timeOfLastTTL=currentTime;
   }
 }
 
-void GetCommand() {                                                                 // Data received from Xbee is in byte 0-256. Sending a string requires multiple bytes even for 1 character and requires processing power
-  static boolean recvInProgress = false;                                            // One complete packet of data contains 6 byte begining with a startMarker and ends with an endMarker.  The 4 remaining bytes is then stored
-  static int ndx = 0;                                                               // in an array called PacketsRX.  
-  byte startMarker = 255;                                                           // PacketsRX[0] = Checksum which is the sum of PacketsRX[1] + PacketsRX[2] + PacketsRX[3], this is used to verify if received data is good
-  byte endMarker = 254;                                                             // PacketsRX[1] = PacketsRXue range from 0 to 120 which drives the y-axis (Throttle). 1-59 is reverse, 61 to 120 is forward, 60 is stop
-  byte rc;                                                                          // PacketsRX[2] = x-axis (Steering) which is the same as y. X and Y is then converted using Map function to give it a range of -127 to 127, 0 is stop
+// Data received from Xbee is in byte 0-256. Sending a string requires multiple bytes even for 1 character and requires processing power
+// One complete packet of data contains 6 byte begining with a startMarker and ends with an endMarker.  The 4 remaining bytes is then stored
+// in an array called PacketsRX.  
+// PacketsRX[0] = Checksum which is the sum of PacketsRX[1] + PacketsRX[2] + PacketsRX[3], this is used to verify if received data is good
+// PacketsRX[1] = PacketsRXue range from 0 to 120 which drives the y-axis (Throttle). 1-59 is reverse, 61 to 120 is forward, 60 is stop
+// PacketsRX[2] = x-axis (Steering) which is the same as y. X and Y is then converted using Map function to give it a range of -127 to 127, 0 is stop
+// PacketsRX[3] = Controls simultaneously 8 channel relay for moving linear actuators
+// PacketsRX[4] = Controls simultaneously 8 channel relay for lights and other devices
+void GetCommand() {                                                                 
+  static boolean recvInProgress = false;                                            
+  static int ndx = 0;                                                               
+  byte startMarker = 255;                                                           
+  byte endMarker = 254;                                                             
+  byte rc;                                                                          
 
-  while (Serial2.available() > 0 && XbeeData == false){                             // PacketsRX[3] = Controls simultaneously 8 channel relay for moving linear actuators
+  while (Serial2.available() > 0 && XbeeData == false){                             
 
-    rc = Serial2.read();                                                            // PacketsRX[4] = Controls simultaneously 8 channel relay for lights and other devices
+    rc = Serial2.read();                                                            
     if (recvInProgress) {
       if (rc != endMarker){
         PacketsRX[ndx]=rc; 
@@ -146,7 +172,8 @@ void ParseData(){
   }
 }
 
-int FindID(int sum) {                                                               // Finds the corresponding ID's from a byte
+// Finds the corresponding ID's from a byte
+int FindID(int sum) {                                                               
   lcd.setCursor(0,3); 
   if (sum){
     for (int i=7; i>=0; i--){
@@ -206,11 +233,12 @@ void DriveMotor(){
   Serial.print('\n');Serial.print(PacketsRX[1]);Serial.print(',');Serial.print(PacketsRX[2]);Serial.print(',');Serial.print(PacketsRX[3]);Serial.print('*');
 }
 
+// PacketsRX[0] = Checksum which is the sum of PacketsRX[1] + PacketsRX[2] + PacketsRX[3], this is used to verify if received data is good
 void sendStatus(){
   PacketsTX[0]=0;
   PacketsTX[2]=0;
   PacketsTX[3]=0;
-  byte startMarker = 255;                                                           // PacketsRX[0] = Checksum which is the sum of PacketsRX[1] + PacketsRX[2] + PacketsRX[3], this is used to verify if received data is good
+  byte startMarker = 255;                                                           
   byte endMarker = 254;
   for (int i=0;i<8;i++){
     if (relayA[i].currentState == HIGH) {
@@ -269,3 +297,4 @@ void loop()
   timeout();
   sendStatus();
 }
+
