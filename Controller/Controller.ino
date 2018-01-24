@@ -1,5 +1,9 @@
+
+#include "Common.h"
+
+
 boolean XbeeData = false;
-int packets[5]={0,0,0,0,0},speedKnobPin=3,joyPin0=0,joyPin1=2;
+int packets[5]={0,0,0,0,0},speedKnobPin=3,joyPin0=14,joyPin1=15;
 int relay[8][2]={{1,22},{2,23},{4,24},{8,25},{16,26},{32,27},{64,28},{128,29}};
 
 void setup() {
@@ -9,21 +13,54 @@ void setup() {
   Serial3.begin(115200);
   Serial.println("Remote Control v1");
   Serial.print("Initializing...");
+  pinMode(53, OUTPUT);
+  digitalWrite(53, HIGH);
+
   delay(2000);
 }
 
 void loop() {  
   ReadControls();
   SendCommand();
+  delay (500);
 } 
 
 void SendCommand() {
-  packets[0]=packets[1]+packets[2]+packets[3]+packets[4]; //Checksum value
-  Serial.print(packets[0]);Serial.print(",");Serial.print(packets[1]);Serial.print(",");Serial.print(packets[2]);Serial.print(",");Serial.print(packets[3]);Serial.print('\n');
-  Serial3.write(255); //Send starting marker
-  for (int i=0; i<5; i++)
-    Serial3.write(packets[i]); 
-  Serial3.write(254); //Send ending marker
+    COM_HEADER_ST       header;
+    header.sync = COM_SYNCPATTERN_8BIT;
+    header.protocolVersion = COM_PROTOCOL_VERSION;
+    header.packetType = COM_PACKETTYPE_STATE;
+    header.checksum = 0;
+
+    COM_CONTROLPARMS_ST body;
+    body.driveSpeed = (char) packets[1];
+    body.turnPosition = (char) packets[2];
+    body.armPosition = 0;
+    body.headRotation = 0;
+    body.relayBitmask = 0;
+
+
+    unsigned char * buf = (unsigned char *) &header;
+    for (int i=0; i< sizeof(header); i++) {
+        char chHexStr[10];
+        sprintf(chHexStr, "%02x ", (unsigned char) buf[i]);
+        Serial.write(chHexStr);  // d3 00 00 00 3c 3d 00 00 00
+
+        Serial3.write(buf[i]);
+        delay(1);
+    }
+
+    buf = (char *) &body;
+    for (int i=0; i< sizeof(body); i++) {
+        char chHexStr[10];
+        sprintf(chHexStr, "%02x ", (unsigned char) buf[i]);
+        Serial.write(chHexStr);
+
+        Serial3.write(buf[i]);
+        delay(1);
+    }
+
+    Serial.write("\n");
 }
 
 void ReadControls() {

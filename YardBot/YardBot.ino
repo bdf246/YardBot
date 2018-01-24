@@ -3,44 +3,35 @@
 #include <LCD.h>
 #include <LiquidCrystal_I2C.h>
 
-#define I2C_LIGHT 0x39
-#define I2C_ALTPRES 0x77
-#define I2C_TEMP 0x48
+#include "Common.h"
+
+
 // Find your address from I2C Scanner function and add it here:
-#define I2C_LCD 0x27
-#define BACKLIGHT_PIN 3
-#define En_pin  2
-#define Rw_pin  1
-#define Rs_pin  0
-#define D4_pin  4
-#define D5_pin  5
-#define D6_pin  6
-#define D7_pin  7
+#define LCD_I2C 0x27
+#define LCD_BACKLIGHT_PIN 3
+#define LCD_En_pin  2
+#define LCD_Rw_pin  1
+#define LCD_Rs_pin  0
+#define LCD_D4_pin  4
+#define LCD_D5_pin  5
+#define LCD_D6_pin  6
+#define LCD_D7_pin  7
 
-LiquidCrystal_I2C  lcd(I2C_LCD,En_pin,Rw_pin,Rs_pin,D4_pin,D5_pin,D6_pin,D7_pin);
+LiquidCrystal_I2C  lcd(LCD_I2C,LCD_En_pin,LCD_Rw_pin,LCD_Rs_pin,LCD_D4_pin,LCD_D5_pin,LCD_D6_pin,LCD_D7_pin);
 
-// Mixed mode is for tank-style diff-drive robots.
-// Only Packet Serial actually has mixed mode, so this Simplified Serial library
-// emulates it (to allow easy switching between the two libraries).
-SabertoothSimplified ST(Serial3); 
-int PacketsRX[5], PacketsTX[4]; 
 unsigned long currentTime,timeOfLastGoodPacket = 0,timeOfLastTTL = 0,timeOfLastStatus=0;
-boolean XbeeData = false;   
-typedef struct {  
-    int currentState;
-    long timer;
-} relay_type;
-
-relay_type relayA[8]={{LOW,0},{LOW,0},{LOW,0},{LOW,0},{LOW,0},{LOW,0},{LOW,0},{LOW,0}};
 
 typedef struct {
-    unsigned long currentTime = 0;
-    unsigned long previousTime = millis();
-    int currentDrive = 0;
-    int currentTurn = 0;
-} speedControl;
+    bool                  connectionLost;
+    COM_CONTROLPARMS_ST   ctlParms;
+    COM_SENSORS_DIST_ST   distSensors;
+} CONTROLCONTEXT_ST;
 
-speedControl Motor;
+    
+static CONTROLCONTEXT_ST controlContext = {true, {0, 0}};
+
+
+static unsigned long previousTime = 0;
 
 
 //----------------------------------------------------------------------
@@ -64,8 +55,13 @@ speedControl Motor;
 
 
 void setup() {
-    Serial3.begin(9600);
+    // H-Bridge
+    // Serial3.begin(9600);
+
+    // XBee:
     Serial2.begin(115200);
+
+    // Debug:
     Serial.begin(9600);
     Serial.println("Starting!!!");
 
@@ -73,22 +69,25 @@ void setup() {
         pinMode(i+22,OUTPUT);
     }
     lcd.begin (20,4);
-    lcd.setBacklightPin(BACKLIGHT_PIN,POSITIVE);
+    lcd.setBacklightPin(LCD_BACKLIGHT_PIN,POSITIVE);
     lcd.setBacklight(HIGH);
     lcd.home (); // go home
-    lcd.print("Robo Plow     ver4.4");
+    lcd.print("Robo Plow     ver4.4+");
     lcd.setCursor(0,1);
     lcd.print("Initializing..."); 
     delay(3000);
     allStop(); 
     lcdReset();
     Serial.println("LCD Reset!!!");
+
+    previousTime = millis();
+
 }
 
 void lcdReset() {
     lcd.clear();
     lcd.home();
-    lcd.print("(X:");lcd.print(PacketsRX[1]);lcd.print(",Y:");lcd.print(PacketsRX[2]);lcd.print(") sum=");lcd.print(PacketsRX[0]);
+    // lcd.print("(X:");lcd.print(PacketsRX[1]);lcd.print(",Y:");lcd.print(PacketsRX[2]);lcd.print(") sum=");lcd.print(PacketsRX[0]);
 }
 
 // The Sabertooth won't act on mixed mode until
@@ -97,216 +96,224 @@ void lcdReset() {
 // Stop robot if no good PacketsRX received within 200th of a seconds
 void allStop() {
     // So, we set both to zero initially.
-    ST.drive(0);
-    ST.turn(0);
-// Serial.print('\n'); Serial.write("All STOP +++++");
+    // ST.drive(0);
+    // ST.turn(0);
+    // Serial.print('\n'); Serial.write("All STOP +++++");
     lcd.setCursor(12,3);
     lcd.print("All Stop");
-    PacketsRX[1]=0;
-    PacketsRX[2]=0;
-    PacketsRX[3]=0;
-    PacketsRX[4]=0;
+    // PacketsRX[1]=0;
+    // PacketsRX[2]=0;
+    // PacketsRX[3]=0;
+    // PacketsRX[4]=0;
 }
 
-void timeout() {
-    if (currentTime > (timeOfLastGoodPacket + 200)) {
-        allStop();
-        timeOfLastGoodPacket = currentTime;
-    }
+// void timeout() {
+    // if (currentTime > (timeOfLastGoodPacket + 500)) {
+        // allStop();
+        // timeOfLastGoodPacket = currentTime;
+    // }
+// 
+    // // Send stay alive command to receiver every COM_MAX_SIGNAL_LOST_TIME_IN_MS (200ms):
+    // if (currentTime > (timeOfLastTTL + COM_MAX_SIGNAL_LOST_TIME_IN_MS)) {
+        // lcdReset();
+        // timeOfLastTTL=currentTime;
+    // }
+// }
 
-    // send stay alive command to receiver every 1 second.
-    if (currentTime > (timeOfLastTTL +1000)) {
-        PacketsTX[1]=100;  
-        lcdReset();
-        timeOfLastTTL=currentTime;
-    }
+void UpdateDisplay(CONTROLCONTEXT_ST & controlContext) {
+    // lcd.setCursor(0,3);
+    // TODO:: ensure not too much com. to LCD (update every 1 second)
+    // lcd.print(controlContext.ctlParms.);
+    //
+    char line1[41];
+    sprintf(line1, "(X:%4d,Y;%4d) sum=%d", 
+        controlContext.ctlParms.driveSpeed,
+        controlContext.ctlParms.turnPosition,
+        0);
+    
+    lcd.clear();
+    lcd.home();
+    lcd.print(line1);
+    // lcd.print("(X:");
+    // lcd.print(controlContext.ctlParms.driveSpeed);
+    // lcd.print(",Y:");
+    // lcd.print(controlContext.ctlParms.turnPosition);
+    // lcd.print(") sum=");
+    // lcd.print(PacketsRX[0]);
 }
 
-// Data received from Xbee is in byte 0-256. Sending a string requires multiple bytes even for 1 character and requires processing power
-// One complete packet of data contains 6 byte begining with a startMarker and ends with an endMarker.  The 4 remaining bytes is then stored
-// in an array called PacketsRX.  
-// PacketsRX[0] = Checksum which is the sum of PacketsRX[1] + PacketsRX[2] + PacketsRX[3], this is used to verify if received data is good
-// PacketsRX[1] = PacketsRXue range from 0 to 120 which drives the y-axis (Throttle). 1-59 is reverse, 61 to 120 is forward, 60 is stop
-// PacketsRX[2] = x-axis (Steering) which is the same as y. X and Y is then converted using Map function to give it a range of -127 to 127, 0 is stop
-// PacketsRX[3] = Controls simultaneously 8 channel relay for moving linear actuators
-// PacketsRX[4] = Controls simultaneously 8 channel relay for lights and other devices
-void GetCommand() {
-    static boolean recvInProgress = false;
-    static int ndx = 0;
-    byte startMarker = 255;
-    byte endMarker = 254;
-    byte rc;
 
-    while (Serial2.available() > 0 && XbeeData == false) {
-        rc = Serial2.read();
-        if (recvInProgress) {
-            if (rc != endMarker) {
-                PacketsRX[ndx]=rc; 
-                ndx++;
+bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
+    bool anyKeepAliveStateData=false;
+    bool syncRecv = false;
+    bool anyData = false;
+
+    static COM_HEADER_ST       header;
+    static COM_CONTROLPARMS_ST absBody;
+    static COM_RELATIVE_ST     relBody;
+    static bool hdrReceived = false;
+    static char * buf = (char *) &header;
+    static int idx=0;
+    static int bodySize=0;
+
+    int hdrSize = sizeof(header);
+    int absBodySize = sizeof(absBody);
+    int relBodySize = sizeof(absBody);
+
+    // Read a packet:
+    while (Serial2.available()) {
+        unsigned char ch = Serial2.read();
+        anyData = true;
+
+        char chHexStr[10];
+        sprintf(chHexStr, "%02x ", (unsigned char) ch);
+        Serial.write(chHexStr);
+        delay(1);
+
+        if (!syncRecv) {
+            // Check for sync byte:
+            if (ch == COM_SYNCPATTERN_8BIT)  {
+                syncRecv = true;
+                buf[idx++] = ch;
             }
             else {
-                XbeeData=true;
-                ndx=0;
-                recvInProgress = false;
-                break;
+                // Still waiting for the header byte. Ignore this byte and try read again:
+                continue;
             }
         }
-        else if (rc == startMarker) {
-            recvInProgress = true;
-        }
-    }
-}
-
-// A byte has a maximum size of 255, when receiving anything larger, the Arduino takes the difference of the value minus the maximum.
-// For example: Since Checksum is the sum of PacketsRX[1]+PacketsRX[2]+PacketsRX[3], the total could exceed 255.  Lets say the total is 258.  
-// The Arduino takes 258 - the maximum (255) and assign Checksum the difference which is 3.  The checksum calculation will therefore fail,
-// to fix this we continue to subtract 255 from the sum of PacketsRX[1]+PacketsRX[2]+PacketsRX[3] until it is less than 255.
-// PacketsRX[3] controls 8 devices simultaneously using just 1 byte of data. Each device are assigned a unique ID {1,2,4,8,16,32,64,128}.
-// To turn on each device, you select their corresponding ID.  To turn on multiple devices simutaneously, you take the sum of all the
-// corresponding IDs. For example: To turn on device ID 4, you issue a byte 4.  To turn on device 4 and 16, you take their sum which is 20.
-// Note: Since we use byte 254 and 255 as an EndMarker.
-
-void ParseData() {
-    int sum = PacketsRX[1]+PacketsRX[2]+PacketsRX[3]+PacketsRX[4];
-    if (XbeeData) {    
-        while (sum > 255) {
-            sum -= 255; 
-        }
-        if (PacketsRX[0]==sum) {
-            timeOfLastGoodPacket = currentTime;
-            PacketsRX[1]=map(PacketsRX[1],0,120,-127,127);
-            PacketsRX[2]=map(PacketsRX[2],0,120,127,-127);
-            DriveMotor();
-            lcd.setCursor(0,3);
-            lcd.print(PacketsRX[3]);
-            FindID(PacketsRX[3]);
-        }
-        XbeeData=false;
-    }
-}
-
-// Finds the corresponding ID's from a byte
-int FindID(int sum) {
-    lcd.setCursor(0,3); 
-    if (sum) {
-        for (int i=7; i>=0; i--) {
-            if (sum >= pow(2,i)) {
-                if (relayA[i].currentState == LOW) {
-                   relayA[i].timer=millis();
-                }
-                relayA[i].currentState==HIGH;
-                sum -= pow(2,i);
-            } else {
-                if (relayA[i].currentState==HIGH and relayA[i].timer > 100) {
-                  relayA[i].currentState==LOW; 
+        else {
+            if (!hdrReceived) {
+                // Receiving Header:
+                if (idx < hdrSize) {
+                    buf[idx++] = ch;
+                    if (idx == hdrSize) {
+                        // Move on to body;
+                        hdrReceived = true;
+                        idx = 0;
+                        if (header.packetType == COM_PACKETTYPE_STATE) {
+                            buf = (char *) &absBody;
+                            bodySize = absBodySize;
+                        }
+                        else if (header.packetType == COM_PACKETTYPE_RELATIVE) {
+                            buf = (char *) &relBody;
+                            bodySize = relBodySize;
+                        }
+                        else {
+                            // Invalid body type. Resume looking for sync.
+                            // TODO: First see if sync re-occurd already in header and shift if so.
+                            //       Do same for body later if checksum fails? Probably need better way.
+                            continue;
+                        }
+                    }
                 }
             }
-            digitalWrite(i=22, relayA[i].currentState);
-        }
-    } else {
-        for (int i=7; i>=0; i--) {
-            if (relayA[i].currentState==HIGH and relayA[i].timer > 100) {
-              relayA[i].currentState==LOW;
-              digitalWrite(i=22, relayA[i].currentState); 
+            else {
+                // Receiving Body:
+                if (idx < bodySize) {
+                    buf[idx++] = ch;
+                    if (idx == bodySize) {
+                        // Whole packet recieved! Verify Checksum/CRC:
+                        // TODO:
+                        
+                        // 
+                        if (header.packetType == COM_PACKETTYPE_STATE) {
+                            // - Update context:
+                            pControlContext->ctlParms = absBody;
+                            anyKeepAliveStateData = true;
+                        }
+                        else if (header.packetType == COM_PACKETTYPE_RELATIVE) {
+                            // Record change for later exectuion...
+
+                            // Send ack:
+
+                        }
+
+                        // Continue reading as there may be a subsequent state packet that overwrites.
+                        // Reset packet state vars:
+                        hdrReceived = false;
+                        buf = (char *) &header;
+                        idx = 0;
+                    }
+                }
             }
         }
-    } 
-}
-
-void DriveMotor() {
-    const long interval=100;
-    Motor.currentTime = millis();
-    Motor.currentDrive = PacketsRX[2];
-    Motor.currentTurn = PacketsRX[1];
-    if (Motor.currentTime - Motor.previousTime >= interval) {
-        Motor.previousTime = Motor.currentTime;
-        if (PacketsRX[2] > Motor.currentDrive)
-            Motor.currentDrive += 1;
-        if (PacketsRX[2] < Motor.currentDrive)
-            Motor.currentDrive -= 1;  
-            if (PacketsRX[1] > Motor.currentTurn)
-            Motor.currentTurn += 1;
-        if (PacketsRX[1] < Motor.currentTurn)
-            Motor.currentTurn -= 1;   
     }
-    if (PacketsRX[2] == 0 && Motor.currentDrive != 0) {
-        if (Motor.currentDrive > 0)
-            Motor.currentDrive -= 1;
-        if (Motor.currentDrive < 0)
-            Motor.currentDrive += 1;
-        }
-    if (PacketsRX[1] == 0 && Motor.currentTurn != 0) {
-        if (Motor.currentTurn > 0)
-            Motor.currentTurn -= 1;
-        if (Motor.currentTurn < 0)
-            Motor.currentTurn += 1;
-    }
-    ST.drive(Motor.currentDrive);
-    ST.turn(Motor.currentTurn);
-    Serial.print('\n');Serial.print(PacketsRX[1]);Serial.print(',');Serial.print(PacketsRX[2]);Serial.print(',');Serial.print(PacketsRX[3]);Serial.print('*');
-}
 
-// PacketsRX[0] = Checksum which is the sum of PacketsRX[1] + PacketsRX[2] + PacketsRX[3], this is used to verify if received data is good
-void sendStatus() {
-    PacketsTX[0]=0;
-    PacketsTX[2]=0;
-    PacketsTX[3]=0;
-    byte startMarker = 255;
-    byte endMarker = 254;
-    for (int i=0;i<8;i++) {
-        if (relayA[i].currentState == HIGH) {
-          PacketsTX[2] += pow(2,i); 
+    if (anyData) Serial.write("\n");
+
+    unsigned long curTime = millis();
+
+    if (anyKeepAliveStateData) {
+        Serial.write("HERE\n");
+        pControlContext->connectionLost = false;
+        previousTime = curTime;
+    }
+    else {
+        // Check for keepalive:
+
+        // If connection was not prevsiously noted as lost:
+        if (!(pControlContext->connectionLost)) {
+            char buffer[100];
+            sprintf(buffer, "prevTime:%lu, curTime:%lu", previousTime, curTime);
+            Serial.println(buffer);
+
+            // If its been too long since a control packet was received:
+            if ((curTime - previousTime) > COM_MAX_SIGNAL_LOST_TIME_IN_MS) {
+                Serial.println("Connection Lost!");
+                // ALL STOP
+                pControlContext->connectionLost = true;
+
+                // Reset Parameters!
+                pControlContext->ctlParms.turnPosition = 0;
+                pControlContext->ctlParms.driveSpeed   = 0;
+    
+                // Set that data was changed!
+                anyKeepAliveStateData=true;
+            }
         }
     }
-    PacketsTX[0]=PacketsTX[1] + PacketsTX[2] + PacketsTX[3];
-    if (currentTime > (timeOfLastStatus + 2500)) {
-        Serial2.write(startMarker);
-        for (int i=0; i<4; i++) {
-          Serial2.write(PacketsTX[i]);
-        }
-        Serial2.write(endMarker);
-        timeOfLastStatus=currentTime; 
-    }
-}
 
-void getTemp() {
-    float convertedtemp, correctedtemp;
-    Wire.requestFrom(I2C_TEMP,2);
-    while(Wire.available()) {
-        int8_t msb=Wire.read();
-        int8_t lsb=Wire.read();
-        lsb=(lsb & 0x80) >> 7;
-        float f = msb+0.5*lsb-2;
-        lcd.setCursor(0,3);
-        lcd.print("Temp ");
-        lcd.print(f);
-    }
-}
-
-void i2cScan() {
-    byte error,address;
-     for (address =1; address < 127; address++) {
-         Wire.beginTransmission(address);
-         error=Wire.endTransmission();
-         if (error == 0) {
-             lcd.setCursor(0,3);
-             lcd.print("address 0x");
-             if (address<16)
-                 lcd.print("0");
-             lcd.print(address,HEX);
-             delay (5000);
-         }
-     }  
+    return (anyKeepAliveStateData);
 }
 
 
 void loop()
 {
-    //i2cScan();
-    currentTime = millis();
-    GetCommand();
-    ParseData();
-    timeout();
-    sendStatus();
+    // currentTime = millis();
+
+    // ----------------------------------------------------------------------
+    // Determine target state:
+    // ----------------------------------------------------------------------
+    bool controlContextUpdated = updateControlContext(&controlContext);
+    // bool controlContextUpdated = updateSensorControl(&controlContext);
+
+    // if (controlContextUpdated || sensorContextUpdated)
+    if (controlContextUpdated) {
+        // Debug info...
+        char buffer[200];
+        sprintf(buffer, "Steering:%d, Throatle:%d\n", controlContext.ctlParms.turnPosition, controlContext.ctlParms.driveSpeed);
+        Serial.print(buffer);
+
+        UpdateDisplay(controlContext);
+    }
+
+    delay(100);
+
+    // ----------------------------------------------------------------------
+    // Make target and actual line up:
+    // NOTE: These functions do not complete action in one call!
+    //       They must be called continuously to get to the target.
+    //       Also note that the target may change between calls!
+    //       It is ok to call them even when no change will ocurr.
+    // ----------------------------------------------------------------------
+    // bool speedChanged = adjustSpeed(controlContext.ctlParms.throatle);
+    // bool directionChanged = adjustDirection(controlContext.ctlParms.steering);
+
+    // If any change, need to wait for it to take effect:
+    // TODO: This is not final. Want to service specific changes when required and not wait for delay 
+    //       required by other changes.
+    // if (speedChanged || directionChanged) {
+        // delay(20);
+    // }
 }
 
