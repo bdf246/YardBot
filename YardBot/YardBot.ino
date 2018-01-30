@@ -20,6 +20,7 @@
 LiquidCrystal_I2C  lcd(LCD_I2C,LCD_En_pin,LCD_Rw_pin,LCD_Rs_pin,LCD_D4_pin,LCD_D5_pin,LCD_D6_pin,LCD_D7_pin);
 
 unsigned long currentTime,timeOfLastGoodPacket = 0,timeOfLastTTL = 0,timeOfLastStatus=0;
+unsigned long prevDispTime = 0;
 
 typedef struct {
     bool                  connectionLost;
@@ -52,6 +53,7 @@ static unsigned long previousTime = 0;
 //   http://www.dimensionengineering.com/datasheets/SabertoothDIPWizard/start.htm
 //   http://www.dimensionengineering.com/datasheets/SabertoothDIPWizard/nonlithium/serial/simple/single.htm
 //----------------------------------------------------------------------
+SabertoothSimplified ST(Serial3); 
 
 
 void setup() {
@@ -144,26 +146,28 @@ void UpdateDisplay(CONTROLCONTEXT_ST & controlContext) {
 
 
 bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
+    bool anyChangeToStateData=false;
     bool anyKeepAliveStateData=false;
-    bool syncRecv = false;
-    bool anyData = false;
 
+    // Save a copy of the current control parameters:
+    COM_CONTROLPARMS_ST absBodyCompleted = pControlContext->ctlParms;
+
+    static bool syncRecv = false;
+    static bool hdrReceived = false;
     static COM_HEADER_ST       header;
     static COM_CONTROLPARMS_ST absBody;
     static COM_RELATIVE_ST     relBody;
-    static bool hdrReceived = false;
     static char * buf = (char *) &header;
     static int idx=0;
     static int bodySize=0;
 
     int hdrSize = sizeof(header);
     int absBodySize = sizeof(absBody);
-    int relBodySize = sizeof(absBody);
+    int relBodySize = sizeof(relBody);
 
     // Read a packet:
     while (Serial2.available()) {
         unsigned char ch = Serial2.read();
-        anyData = true;
 
         char chHexStr[10];
         sprintf(chHexStr, "%02x ", (unsigned char) ch);
@@ -187,21 +191,24 @@ bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
                 if (idx < hdrSize) {
                     buf[idx++] = ch;
                     if (idx == hdrSize) {
+                        Serial.write("\n");
                         // Move on to body;
-                        hdrReceived = true;
                         idx = 0;
                         if (header.packetType == COM_PACKETTYPE_STATE) {
+                            hdrReceived = true;
                             buf = (char *) &absBody;
                             bodySize = absBodySize;
                         }
-                        else if (header.packetType == COM_PACKETTYPE_RELATIVE) {
-                            buf = (char *) &relBody;
-                            bodySize = relBodySize;
-                        }
+                        // else if (header.packetType == COM_PACKETTYPE_RELATIVE) {
+                            // buf = (char *) &relBody;
+                            // bodySize = relBodySize;
+                        // }
                         else {
                             // Invalid body type. Resume looking for sync.
                             // TODO: First see if sync re-occurd already in header and shift if so.
                             //       Do same for body later if checksum fails? Probably need better way.
+                            buf = (char *) &header;
+                            syncRecv = false;
                             continue;
                         }
                     }
@@ -212,53 +219,64 @@ bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
                 if (idx < bodySize) {
                     buf[idx++] = ch;
                     if (idx == bodySize) {
+                        Serial.write("\n");
                         // Whole packet recieved! Verify Checksum/CRC:
                         // TODO:
                         
                         // 
                         if (header.packetType == COM_PACKETTYPE_STATE) {
                             // - Update context:
-                            pControlContext->ctlParms = absBody;
+                            if (memcmp((char *)&absBodyCompleted, (char *)&absBody, absBodySize) != 0) {
+                                absBodyCompleted = absBody;
+                                // Serial.print("Saving iterim body\n");
+                                anyChangeToStateData=true;
+                            }
                             anyKeepAliveStateData = true;
                         }
-                        else if (header.packetType == COM_PACKETTYPE_RELATIVE) {
-                            // Record change for later exectuion...
-
+                        // else if (header.packetType == COM_PACKETTYPE_RELATIVE) {
+                            // // Record change for later exectuion...
                             // Send ack:
-
-                        }
+                        // }
 
                         // Continue reading as there may be a subsequent state packet that overwrites.
                         // Reset packet state vars:
                         hdrReceived = false;
                         buf = (char *) &header;
                         idx = 0;
+                        syncRecv = false;
                     }
                 }
             }
         }
     }
 
-    if (anyData) Serial.write("\n");
-
     unsigned long curTime = millis();
 
     if (anyKeepAliveStateData) {
-        Serial.write("HERE\n");
+        // Serial.write("HERE\n");
         pControlContext->connectionLost = false;
         previousTime = curTime;
+
+        if (memcmp((char *)&(pControlContext->ctlParms), (char *)&absBodyCompleted, absBodySize) != 0) {
+            pControlContext->ctlParms = absBodyCompleted;
+            anyChangeToStateData=true;
+            // Serial.print("Saving body");
+        }
+        else {
+            anyChangeToStateData=false;
+        }
     }
     else {
         // Check for keepalive:
 
         // If connection was not prevsiously noted as lost:
         if (!(pControlContext->connectionLost)) {
-            char buffer[100];
-            sprintf(buffer, "prevTime:%lu, curTime:%lu", previousTime, curTime);
-            Serial.println(buffer);
-
             // If its been too long since a control packet was received:
             if ((curTime - previousTime) > COM_MAX_SIGNAL_LOST_TIME_IN_MS) {
+                // char buffer[300];
+                // sprintf(buffer, "prevTime:%lu, curTime:%lu\n", previousTime, curTime);
+                // Serial.println(buffer);
+
                 Serial.println("Connection Lost!");
                 // ALL STOP
                 pControlContext->connectionLost = true;
@@ -268,18 +286,55 @@ bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
                 pControlContext->ctlParms.driveSpeed   = 0;
     
                 // Set that data was changed!
-                anyKeepAliveStateData=true;
+                anyChangeToStateData=true;
             }
         }
     }
 
-    return (anyKeepAliveStateData);
+    return (anyChangeToStateData);
 }
 
+bool adjustSpeedAndDirection(INT_8 drive, INT_8 turn) 
+{
+    bool rv = false;
+
+    // This code doesn't do anything;
+    #if 0
+    const long interval=100;
+    Motor.currentTime = millis();
+    Motor.currentDrive = PacketsRX[2];
+    Motor.currentTurn = PacketsRX[1];
+    if ((Motor.currentTime - Motor.previousTime) >= interval) {
+        Motor.previousTime = Motor.currentTime;
+        if (PacketsRX[2] > Motor.currentDrive) Motor.currentDrive += 1;
+        if (PacketsRX[2] < Motor.currentDrive) Motor.currentDrive -= 1;  
+        if (PacketsRX[1] > Motor.currentTurn)  Motor.currentTurn += 1;
+        if (PacketsRX[1] < Motor.currentTurn)  Motor.currentTurn -= 1;   
+    }
+    if (PacketsRX[2] == 0 && Motor.currentDrive != 0) {
+        if (Motor.currentDrive > 0) Motor.currentDrive -= 1;
+        if (Motor.currentDrive < 0) Motor.currentDrive += 1;
+    }
+    if (PacketsRX[1] == 0 && Motor.currentTurn != 0) {
+        if (Motor.currentTurn > 0) Motor.currentTurn -= 1;
+        if (Motor.currentTurn < 0) Motor.currentTurn += 1;
+    }
+    #endif
+    // How it was;
+    // ST.drive(Motor.currentDrive);
+    // ST.turn(Motor.currentTurn);
+    // Serial.print('\n');Serial.print(PacketsRX[1]);Serial.print(',');Serial.print(PacketsRX[2]);Serial.print(',');Serial.print(PacketsRX[3]);Serial.print('*');
+
+    ST.drive(drive);
+    ST.turn(turn);
+
+    return (rv);
+}
 
 void loop()
 {
-    // currentTime = millis();
+    static bool pendingDisplay=false;
+    currentTime = millis();
 
     // ----------------------------------------------------------------------
     // Determine target state:
@@ -288,16 +343,22 @@ void loop()
     // bool controlContextUpdated = updateSensorControl(&controlContext);
 
     // if (controlContextUpdated || sensorContextUpdated)
-    if (controlContextUpdated) {
-        // Debug info...
-        char buffer[200];
-        sprintf(buffer, "Steering:%d, Throatle:%d\n", controlContext.ctlParms.turnPosition, controlContext.ctlParms.driveSpeed);
-        Serial.print(buffer);
+    //
+    if (controlContextUpdated) pendingDisplay = true;
 
-        UpdateDisplay(controlContext);
+    if (pendingDisplay) {
+        if ((currentTime - prevDispTime) > 500) {
+            // Debug info...
+            char buffer[200];
+            sprintf(buffer, "Steering:%d, Throatle:%d\n", controlContext.ctlParms.turnPosition, controlContext.ctlParms.driveSpeed);
+            Serial.print(buffer);
+
+            UpdateDisplay(controlContext);
+            prevDispTime = currentTime;
+            pendingDisplay = false;
+        }
     }
 
-    delay(100);
 
     // ----------------------------------------------------------------------
     // Make target and actual line up:
@@ -306,14 +367,16 @@ void loop()
     //       Also note that the target may change between calls!
     //       It is ok to call them even when no change will ocurr.
     // ----------------------------------------------------------------------
-    // bool speedChanged = adjustSpeed(controlContext.ctlParms.throatle);
-    // bool directionChanged = adjustDirection(controlContext.ctlParms.steering);
-
+    // bool speedChanged = adjustSpeedAndDirection(controlContext.ctlParms.driveSpeed, 
+                                                // controlContext.ctlParms.turnPosition);
+// 
     // If any change, need to wait for it to take effect:
     // TODO: This is not final. Want to service specific changes when required and not wait for delay 
     //       required by other changes.
     // if (speedChanged || directionChanged) {
         // delay(20);
     // }
+
+    // delay(100);
 }
 
