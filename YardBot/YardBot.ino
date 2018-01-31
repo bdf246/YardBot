@@ -6,6 +6,28 @@
 #include "Common.h"
 
 
+
+#define ROBOT_NAME "BradsYardBot"
+
+// If you haven't configured your device before use this
+//#define BLUETOOTH_SPEED 38400 //This is the default baudrate that HC-05 uses
+// If you are modifying your existing configuration, use this:
+// #define BLUETOOTH_SPEED 57600
+#define BLUETOOTH_SPEED 9600
+
+#include <SoftwareSerial.h>
+
+
+// Swap RX/TX connections on bluetooth chip
+//   Pin 10 --> Bluetooth TX
+//   Pin 11 --> Bluetooth RX
+SoftwareSerial mySerial(10, 11); // RX, TX
+
+// #define CONTROL_SERIAL Serial2
+#define CONTROL_SERIAL mySerial
+
+
+
 // Find your address from I2C Scanner function and add it here:
 #define LCD_I2C 0x27
 #define LCD_BACKLIGHT_PIN 3
@@ -56,6 +78,16 @@ static unsigned long previousTime = 0;
 SabertoothSimplified ST(Serial3); 
 
 
+void waitForResponse() {
+    delay(1000);
+    while (mySerial.available()) {
+      Serial.write(mySerial.read());
+    }
+    Serial.write("\n");
+}
+
+
+
 void setup() {
     // H-Bridge
     Serial3.begin(9600);
@@ -84,7 +116,40 @@ void setup() {
 
     previousTime = millis();
 
+    setup_bluetooth();
+
 }
+
+void setup_bluetooth() {
+
+    Serial.println("Starting config");
+    mySerial.begin(BLUETOOTH_SPEED);
+    delay(1000);
+
+    // Should respond with OK
+    mySerial.print("AT\r\n");
+    waitForResponse();
+
+    // Should respond with its version
+    mySerial.print("AT+VERSION\r\n");
+    waitForResponse();
+
+    // Set pin to 0000
+    mySerial.print("AT+PSWD=0000\r\n");
+    waitForResponse();
+
+    // Set the name to ROBOT_NAME
+    String rnc = String("AT+NAME=") + String(ROBOT_NAME) + String("\r\n"); 
+    mySerial.print(rnc);
+    waitForResponse();
+
+    // Set baudrate to 57600
+    mySerial.print("AT+UART=57600,0,0\r\n");
+    waitForResponse();
+
+    Serial.println("Done!");
+}
+
 
 void lcdReset() {
     lcd.clear();
@@ -166,8 +231,8 @@ bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
     int relBodySize = sizeof(relBody);
 
     // Read a packet:
-    while (Serial2.available()) {
-        unsigned char ch = Serial2.read();
+    while (CONTROL_SERIAL.available()) {
+        unsigned char ch = CONTROL_SERIAL.read();
 
         char chHexStr[10];
         sprintf(chHexStr, "%02x ", (unsigned char) ch);
@@ -333,7 +398,7 @@ bool adjustSpeedAndDirection(INT_8 drive, INT_8 turn)
 
 void loop()
 {
-    static bool pendingDisplay=false;
+    static bool pendingDisplay=true; // start with an update to the display...
     currentTime = millis();
 
     // ----------------------------------------------------------------------
@@ -347,7 +412,7 @@ void loop()
     if (controlContextUpdated) pendingDisplay = true;
 
     if (pendingDisplay) {
-        if ((currentTime - prevDispTime) > 500) {
+        if ((currentTime - prevDispTime) > 200) {
             // Debug info...
             char buffer[200];
             sprintf(buffer, "Steering:%d, Throatle:%d\n", controlContext.ctlParms.turnPosition, controlContext.ctlParms.driveSpeed);
