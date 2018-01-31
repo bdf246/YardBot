@@ -367,9 +367,13 @@ void loop()
     //       Also note that the target may change between calls!
     //       It is ok to call them even when no change will ocurr.
     // ----------------------------------------------------------------------
-    bool speedChanged = adjustSpeedAndDirection(controlContext.ctlParms.driveSpeed, 
-                                                controlContext.ctlParms.turnPosition);
-// 
+    if (controlContextUpdated) {
+        Serial.write("Updating ST\n");
+        bool speedChanged = adjustSpeedAndDirection(controlContext.ctlParms.driveSpeed, 
+                                                    controlContext.ctlParms.turnPosition);
+    }
+
+
     // If any change, need to wait for it to take effect:
     // TODO: This is not final. Want to service specific changes when required and not wait for delay 
     //       required by other changes.
