@@ -359,39 +359,41 @@ bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
     return (anyChangeToStateData);
 }
 
-bool adjustSpeedAndDirection(INT_8 drive, INT_8 turn) 
+bool adjustSpeedAndDirection(INT_8 newDrive, INT_8 newTurn) 
 {
     bool rv = false;
 
-    // This code doesn't do anything;
-    #if 0
     const long interval=100;
     Motor.currentTime = millis();
-    Motor.currentDrive = PacketsRX[2];
-    Motor.currentTurn = PacketsRX[1];
-    if ((Motor.currentTime - Motor.previousTime) >= interval) {
-        Motor.previousTime = Motor.currentTime;
-        if (PacketsRX[2] > Motor.currentDrive) Motor.currentDrive += 1;
-        if (PacketsRX[2] < Motor.currentDrive) Motor.currentDrive -= 1;  
-        if (PacketsRX[1] > Motor.currentTurn)  Motor.currentTurn += 1;
-        if (PacketsRX[1] < Motor.currentTurn)  Motor.currentTurn -= 1;   
-    }
-    if (PacketsRX[2] == 0 && Motor.currentDrive != 0) {
+    if (newDrive == 0 && Motor.currentDrive != 0) {
         if (Motor.currentDrive > 0) Motor.currentDrive -= 1;
         if (Motor.currentDrive < 0) Motor.currentDrive += 1;
     }
-    if (PacketsRX[1] == 0 && Motor.currentTurn != 0) {
+    else if ((Motor.currentTime - Motor.previousTime) >= interval) {
+        if (newDrive > Motor.currentDrive) Motor.currentDrive += 1;
+        if (newDrive < Motor.currentDrive) Motor.currentDrive -= 1;  
+    }
+
+    if (newTurn == 0 && Motor.currentTurn != 0) {
         if (Motor.currentTurn > 0) Motor.currentTurn -= 1;
         if (Motor.currentTurn < 0) Motor.currentTurn += 1;
     }
-    #endif
+    else if ((Motor.currentTime - Motor.previousTime) >= interval) {
+        if (newTurn > Motor.currentTurn)  Motor.currentTurn += 1;
+        if (newTurn < Motor.currentTurn)  Motor.currentTurn -= 1;   
+    }
+
+    if ((Motor.currentTime - Motor.previousTime) >= interval) {
+        Motor.previousTime = Motor.currentTime;
+    }
+
     // How it was;
     // ST.drive(Motor.currentDrive);
     // ST.turn(Motor.currentTurn);
     // Serial.print('\n');Serial.print(PacketsRX[1]);Serial.print(',');Serial.print(PacketsRX[2]);Serial.print(',');Serial.print(PacketsRX[3]);Serial.print('*');
 
-    ST.drive(drive);
-    ST.turn(turn);
+    ST.drive(Motor.currentDrive);
+    ST.turn(Motor.currentTurn);
 
     return (rv);
 }
