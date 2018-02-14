@@ -4,14 +4,6 @@
 #define COM_PROTOCOL_VERSION 0
 
 
-// General Types
-typedef          char   INT_8;
-typedef unsigned char  UINT_8;
-typedef          short  INT16;
-typedef unsigned short UINT16;
-typedef          long   INT32;
-typedef unsigned long  UINT32;
-
 // Interface Defines;
 #define COM_STATE_KEEP_ALIVE_TIME_IN_MS  100
 #define COM_MAX_SIGNAL_LOST_TIME_IN_MS   (COM_STATE_KEEP_ALIVE_TIME_IN_MS*10)
@@ -50,11 +42,11 @@ typedef enum {
 //       that this structure is received again. Like default values, those safe values are not defined in this interface.
 //       The keep alive rate is defined in this interface as: COM_STATE_KEEP_ALIVE_TIME_IN_MS
 typedef struct {
-    INT_8      driveSpeed;       // -127 to +127
-    INT_8      turnPosition;     // -127 to +127
-    UINT_8     armPosition;      // 0 to 255 ; Uses 2 relays with sensor to achive position.
-    UINT_8     headRotation;     // 0 to 255 ; Uses 2 relays with sensor to achive position.
-    UINT_8     relayBitmask;     // 0-off 1-on ; Robot specific relays. Includes relays controlled by internal sensor 
+    int8_t      driveSpeed;       // -127 to +127
+    int8_t      turnPosition;     // -127 to +127
+    uint8_t     armPosition;      // 0 to 255 ; Uses 2 relays with sensor to achive position.
+    uint8_t     headRotation;     // 0 to 255 ; Uses 2 relays with sensor to achive position.
+    uint8_t     relayBitmask;     // 0-off 1-on ; Robot specific relays. Includes relays controlled by internal sensor 
                                  // (i.e. arm). however these values are ignored by robot for the purpose of control.
                                  // They are however useful as status back to the controller for debug.
 } COM_CONTROLPARMS_ST;
@@ -66,7 +58,7 @@ typedef struct {
 // Relative control header and acknowledgement struct;
 // Used in relative control struct and for packet type: COM_PACKETTYPE_REL_ACK
 typedef struct {
-    UINT_8                      sequenceNumber;  // Number in the sequence - used for controller acknowledgement.
+    uint8_t                      sequenceNumber;  // Number in the sequence - used for controller acknowledgement.
                                                  // Loops to 0 after 255. Global accross all parameters.
     COM_PACKETTYPE_RELATIVE_EN  parmToControl;   // Which parameter is being controlled.
 } COM_RELATIVE_HEADER_ST;
@@ -75,7 +67,7 @@ typedef struct {
 // Used packet type: COM_PACKETTYPE_RELATIVE
 typedef struct {
     COM_RELATIVE_HEADER_ST  header;
-    UINT_8                  value;   // Parameter specific value. TODO: Consider more structure here...
+    uint8_t                  value;   // Parameter specific value. TODO: Consider more structure here...
 } COM_RELATIVE_ST;
 
 // ----------------------------------------------------------------------
@@ -84,18 +76,18 @@ typedef struct {
 
 // Ultrasonic sensors placed on each corner of the robot:
 typedef struct {
-    UINT_8     frontRight;
-    UINT_8     frontLeft;
-    UINT_8     backRight;
-    UINT_8     backLeft;
+    uint8_t     frontRight;
+    uint8_t     frontLeft;
+    uint8_t     backRight;
+    uint8_t     backLeft;
 } COM_SENSORS_DIST_ST;
 
 // Power usage. i.e. Sabertooth 24V, INA219 values read for 12V actuator circuit.
 // TODO - refine this struct!
 typedef struct {
-    UINT_8     current;
-    UINT_8     voltage;
-    UINT_8     batteryLevel_24V;
+    uint8_t     current;
+    uint8_t     voltage;
+    uint8_t     batteryLevel_24V;
 } COM_SENSORS_POWER_ST;
 
 // Status:
@@ -125,9 +117,9 @@ typedef struct {
 //              COM_STATUSPARMS_ST
 //              COM_RELATIVE_ST
 typedef struct {
-    UINT_8               sync=COM_SYNCPATTERN_8BIT;
-    UINT_8               protocolVersion=COM_PROTOCOL_VERSION;
-    COM_PACKETTYPE_EN    packetType;       // Indicates the payload struct used. i.e. how many more bytes to read.
-    UINT_8               checksum;         // Over everthing including header and payload.
+    uint8_t               sync=COM_SYNCPATTERN_8BIT;
+    uint8_t               protocolVersion=COM_PROTOCOL_VERSION;
+    COM_PACKETTYPE_EN     packetType;       // Indicates the payload struct used. i.e. how many more bytes to read.
+    uint8_t               checksum;         // Over everthing including header and payload.
 } COM_HEADER_ST;
 

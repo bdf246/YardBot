@@ -359,7 +359,7 @@ bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
     return (anyChangeToStateData);
 }
 
-bool adjustSpeedAndDirection(INT_8 newDrive, INT_8 newTurn) 
+bool adjustSpeedAndDirection(int8_t newDrive, int8_t newTurn) 
 {
     bool rv = false;
 
