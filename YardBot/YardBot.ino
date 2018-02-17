@@ -359,31 +359,43 @@ bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
     return (anyChangeToStateData);
 }
 
-bool adjustSpeedAndDirection(int8_t newDrive, int8_t newTurn) 
+typedef struct {
+    unsigned long currentTime = 0;
+    unsigned long previousTime = millis();
+    int currentDrive = 0;
+    int currentTurn = 0;
+} MOTORSTATE_ST;
+ 
+// MOTORSTATE_ST Motor = {0, 0, 0, 0};
+MOTORSTATE_ST Motor;
+ 
+
+bool adjustSpeedAndDirection(int8_t targetDrive, int8_t targetTurn) 
 {
     bool rv = false;
 
-    const long interval=100;
+    const long interval=50;
     Motor.currentTime = millis();
-    if (newDrive == 0 && Motor.currentDrive != 0) {
-        if (Motor.currentDrive > 0) Motor.currentDrive -= 1;
-        if (Motor.currentDrive < 0) Motor.currentDrive += 1;
-    }
-    else if ((Motor.currentTime - Motor.previousTime) >= interval) {
-        if (newDrive > Motor.currentDrive) Motor.currentDrive += 1;
-        if (newDrive < Motor.currentDrive) Motor.currentDrive -= 1;  
-    }
-
-    if (newTurn == 0 && Motor.currentTurn != 0) {
-        if (Motor.currentTurn > 0) Motor.currentTurn -= 1;
-        if (Motor.currentTurn < 0) Motor.currentTurn += 1;
-    }
-    else if ((Motor.currentTime - Motor.previousTime) >= interval) {
-        if (newTurn > Motor.currentTurn)  Motor.currentTurn += 1;
-        if (newTurn < Motor.currentTurn)  Motor.currentTurn -= 1;   
-    }
-
+    // if (targetDrive == 0 && Motor.currentDrive != 0) {
+        // if (Motor.currentDrive > 0) Motor.currentDrive -= 1;
+        // if (Motor.currentDrive < 0) Motor.currentDrive += 1;
+    // }
+    // else 
     if ((Motor.currentTime - Motor.previousTime) >= interval) {
+        if (targetDrive > Motor.currentDrive) Motor.currentDrive += 1;
+        if (targetDrive < Motor.currentDrive) Motor.currentDrive -= 1;  
+    // }
+// 
+    // if (targetTurn == 0 && Motor.currentTurn != 0) {
+        // if (Motor.currentTurn > 0) Motor.currentTurn -= 1;
+        // if (Motor.currentTurn < 0) Motor.currentTurn += 1;
+    // }
+    // else if ((Motor.currentTime - Motor.previousTime) >= interval) {
+        if (targetTurn > Motor.currentTurn)  Motor.currentTurn += 1;
+        if (targetTurn < Motor.currentTurn)  Motor.currentTurn -= 1;   
+    // }
+// 
+    // if ((Motor.currentTime - Motor.previousTime) >= interval) {
         Motor.previousTime = Motor.currentTime;
     }
 
@@ -434,11 +446,11 @@ void loop()
     //       Also note that the target may change between calls!
     //       It is ok to call them even when no change will ocurr.
     // ----------------------------------------------------------------------
-    if (controlContextUpdated) {
-        Serial.write("Updating ST\n");
+    // if (controlContextUpdated) {
+        // Serial.write("Updating ST\n");
         bool speedChanged = adjustSpeedAndDirection(controlContext.ctlParms.driveSpeed, 
                                                     controlContext.ctlParms.turnPosition);
-    }
+    // }
 
 
     // If any change, need to wait for it to take effect:
