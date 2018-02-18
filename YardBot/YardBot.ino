@@ -57,11 +57,20 @@ typedef struct {
 } CONTROLCONTEXT_ST;
 
     
-static CONTROLCONTEXT_ST controlContext = {true, {0, 0}};
+static CONTROLCONTEXT_ST controlContext = {true, { {0, 0 }, 0}};
 
 
 static unsigned long previousTime = 0;
 
+typedef struct {
+    unsigned long currentTime = 0;
+    unsigned long previousTime = millis();
+    int currentDrive = 0;
+    int currentTurn = 0;
+} MOTORSTATE_ST;
+ 
+// MOTORSTATE_ST Motor = {0, 0, 0, 0};
+MOTORSTATE_ST Motor;
 
 //----------------------------------------------------------------------
 // Serial Port Usage
@@ -199,26 +208,21 @@ void allStop() {
     // }
 // }
 
-void UpdateDisplay(CONTROLCONTEXT_ST & controlContext) {
+void UpdateDisplay(CONTROLCONTEXT_ST & controlContext, MOTORSTATE_ST & motor) {
     // lcd.setCursor(0,3);
     // TODO:: ensure not too much com. to LCD (update every 1 second)
     // lcd.print(controlContext.ctlParms.);
     //
     char line1[41];
-    sprintf(line1, "(X:%4d,Y;%4d) sum=%d", 
+    sprintf(line1, "Target:D:%4d,S:%4d Motor:D:%4d,S:%4d", 
         controlContext.ctlParms.driveParms.driveSpeed,
         controlContext.ctlParms.driveParms.turnPosition,
-        0);
+        motor.currentDrive,
+        motor.currentTurn);
     
     lcd.clear();
     lcd.home();
     lcd.print(line1);
-    // lcd.print("(X:");
-    // lcd.print(controlContext.ctlParms.driveParms.driveSpeed);
-    // lcd.print(",Y:");
-    // lcd.print(controlContext.ctlParms.driveParms.turnPosition);
-    // lcd.print(") sum=");
-    // lcd.print(PacketsRX[0]);
 }
 
 
@@ -377,49 +381,32 @@ bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
     return (anyChangeToStateData);
 }
 
-typedef struct {
-    unsigned long currentTime = 0;
-    unsigned long previousTime = millis();
-    int currentDrive = 0;
-    int currentTurn = 0;
-} MOTORSTATE_ST;
- 
-// MOTORSTATE_ST Motor = {0, 0, 0, 0};
-MOTORSTATE_ST Motor;
  
 
-bool adjustSpeedAndDirection(int8_t targetDrive, int8_t targetTurn) 
+bool adjustSpeedAndDirection(int8_t targetDrive, int8_t targetTurn, int8_t halt, bool connectionLost) 
 {
     bool rv = false;
+    long interval=50;
 
-    const long interval=50;
+    if (connectionLost) halt = 2;
+
+    if (halt > 0) {
+        targetDrive = 0;
+        targetTurn = 0;
+        if (halt == 1) interval=1;
+        if (halt == 2) interval=5;
+    }
+
     Motor.currentTime = millis();
-    // if (targetDrive == 0 && Motor.currentDrive != 0) {
-        // if (Motor.currentDrive > 0) Motor.currentDrive -= 1;
-        // if (Motor.currentDrive < 0) Motor.currentDrive += 1;
-    // }
-    // else 
     if ((Motor.currentTime - Motor.previousTime) >= interval) {
         if (targetDrive > Motor.currentDrive) Motor.currentDrive += 1;
         if (targetDrive < Motor.currentDrive) Motor.currentDrive -= 1;  
-    // }
-// 
-    // if (targetTurn == 0 && Motor.currentTurn != 0) {
-        // if (Motor.currentTurn > 0) Motor.currentTurn -= 1;
-        // if (Motor.currentTurn < 0) Motor.currentTurn += 1;
-    // }
-    // else if ((Motor.currentTime - Motor.previousTime) >= interval) {
         if (targetTurn > Motor.currentTurn)  Motor.currentTurn += 1;
         if (targetTurn < Motor.currentTurn)  Motor.currentTurn -= 1;   
-    // }
-// 
-    // if ((Motor.currentTime - Motor.previousTime) >= interval) {
+
         Motor.previousTime = Motor.currentTime;
     }
 
-    // How it was;
-    // ST.drive(Motor.currentDrive);
-    // ST.turn(Motor.currentTurn);
     // Serial.print('\n');Serial.print(PacketsRX[1]);Serial.print(',');Serial.print(PacketsRX[2]);Serial.print(',');Serial.print(PacketsRX[3]);Serial.print('*');
 
     ST.drive(Motor.currentDrive);
@@ -443,17 +430,17 @@ void loop()
     //
     if (controlContextUpdated) pendingDisplay = true;
 
-    if (pendingDisplay) {
-        if ((currentTime - prevDispTime) > 200) {
+    if ((currentTime - prevDispTime) > 400) {
+        if (pendingDisplay) {
             // Debug info...
             char buffer[200];
             sprintf(buffer, "Steering:%d, Throatle:%d\n", controlContext.ctlParms.driveParms.turnPosition, controlContext.ctlParms.driveParms.driveSpeed);
             Serial.print(buffer);
-
-            UpdateDisplay(controlContext);
-            prevDispTime = currentTime;
             pendingDisplay = false;
         }
+
+        UpdateDisplay(controlContext, Motor);
+        prevDispTime = currentTime;
     }
 
 
@@ -467,7 +454,9 @@ void loop()
     // if (controlContextUpdated) {
         // Serial.write("Updating ST\n");
         bool speedChanged = adjustSpeedAndDirection(controlContext.ctlParms.driveParms.driveSpeed, 
-                                                    controlContext.ctlParms.driveParms.turnPosition);
+                                                    controlContext.ctlParms.driveParms.turnPosition,
+                                                    controlContext.ctlParms.halt,
+                                                    controlContext.connectionLost);
     // }
 
 
