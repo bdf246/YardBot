@@ -3,7 +3,7 @@
 #include <LCD.h>
 #include <LiquidCrystal_I2C.h>
 
-#include "Common.h"
+#include "Interface.h"
 
 
 
@@ -23,8 +23,15 @@
 //   Pin 11 --> Bluetooth RX
 SoftwareSerial mySerial(10, 11); // RX, TX
 
-// #define CONTROL_SERIAL Serial2
-#define CONTROL_SERIAL mySerial
+#define CONTROL_TYPE 0 // 0 for hardware controller, 1 for bluetooth.
+
+#if CONTROL_TYPE == 0
+    #define CONTROL_SERIAL Serial2
+#elif CONTROL_TYPE == 1
+    #define CONTROL_SERIAL mySerial
+#else
+    #error
+#endif
 
 
 
@@ -45,9 +52,8 @@ unsigned long currentTime,timeOfLastGoodPacket = 0,timeOfLastTTL = 0,timeOfLastS
 unsigned long prevDispTime = 0;
 
 typedef struct {
-    bool                  connectionLost;
-    COM_CONTROLPARMS_ST   ctlParms;
-    COM_SENSORS_DIST_ST   distSensors;
+    bool                   connectionLost;
+    COM_FEATURE_DRIVE_ST   ctlParms;
 } CONTROLCONTEXT_ST;
 
     
@@ -93,10 +99,12 @@ void setup() {
     Serial3.begin(9600);
 
     // XBee:
-    Serial2.begin(115200);
+    #if CONTROL_TYPE == 0
+        Serial2.begin(115200);
+    #endif
 
     // Debug:
-    Serial.begin(9600);
+    Serial.begin(115200);
     Serial.println("Starting!!!");
 
     for (int i=0; i<8; i++) {
@@ -116,10 +124,12 @@ void setup() {
 
     previousTime = millis();
 
-    setup_bluetooth();
-
+    #if CONTROL_TYPE == 1
+        setup_bluetooth();
+    #endif
 }
 
+#if CONTROL_TYPE == 1
 void setup_bluetooth() {
 
     Serial.println("Starting config");
@@ -149,6 +159,8 @@ void setup_bluetooth() {
 
     Serial.println("Done!");
 }
+#endif
+
 
 
 void lcdReset() {
@@ -194,17 +206,17 @@ void UpdateDisplay(CONTROLCONTEXT_ST & controlContext) {
     //
     char line1[41];
     sprintf(line1, "(X:%4d,Y;%4d) sum=%d", 
-        controlContext.ctlParms.driveSpeed,
-        controlContext.ctlParms.turnPosition,
+        controlContext.ctlParms.driveParms.driveSpeed,
+        controlContext.ctlParms.driveParms.turnPosition,
         0);
     
     lcd.clear();
     lcd.home();
     lcd.print(line1);
     // lcd.print("(X:");
-    // lcd.print(controlContext.ctlParms.driveSpeed);
+    // lcd.print(controlContext.ctlParms.driveParms.driveSpeed);
     // lcd.print(",Y:");
-    // lcd.print(controlContext.ctlParms.turnPosition);
+    // lcd.print(controlContext.ctlParms.driveParms.turnPosition);
     // lcd.print(") sum=");
     // lcd.print(PacketsRX[0]);
 }
@@ -215,20 +227,20 @@ bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
     bool anyKeepAliveStateData=false;
 
     // Save a copy of the current control parameters:
-    COM_CONTROLPARMS_ST absBodyCompleted = pControlContext->ctlParms;
+    COM_FEATURE_DRIVE_ST absBodyCompleted = pControlContext->ctlParms;
 
     static bool syncRecv = false;
     static bool hdrReceived = false;
     static COM_HEADER_ST       header;
-    static COM_CONTROLPARMS_ST absBody;
-    static COM_RELATIVE_ST     relBody;
+    static COM_FEATURE_DRIVE_ST absBody;
+    // static COM_RELATIVE_ST     relBody;
     static char * buf = (char *) &header;
     static int idx=0;
     static int bodySize=0;
 
     int hdrSize = sizeof(header);
     int absBodySize = sizeof(absBody);
-    int relBodySize = sizeof(relBody);
+    // int relBodySize = sizeof(relBody);
 
     // Read a packet:
     while (CONTROL_SERIAL.available()) {
@@ -237,7 +249,7 @@ bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
         char chHexStr[10];
         sprintf(chHexStr, "%02x ", (unsigned char) ch);
         Serial.write(chHexStr);
-        delay(1);
+        // delay(1);
 
         if (!syncRecv) {
             // Check for sync byte:
@@ -247,6 +259,7 @@ bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
             }
             else {
                 // Still waiting for the header byte. Ignore this byte and try read again:
+                Serial.write("\n");
                 continue;
             }
         }
@@ -256,10 +269,11 @@ bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
                 if (idx < hdrSize) {
                     buf[idx++] = ch;
                     if (idx == hdrSize) {
-                        Serial.write("\n");
+                        // Serial.write("\n");
                         // Move on to body;
                         idx = 0;
-                        if (header.packetType == COM_PACKETTYPE_STATE) {
+                        if ((header.featureId == COM_FEATURE_DRIVE) 
+                         && (header.packetType == COM_PACKETTYPE_STATE)) {
                             hdrReceived = true;
                             buf = (char *) &absBody;
                             bodySize = absBodySize;
@@ -274,6 +288,7 @@ bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
                             //       Do same for body later if checksum fails? Probably need better way.
                             buf = (char *) &header;
                             syncRecv = false;
+                            Serial.write("\n");
                             continue;
                         }
                     }
@@ -347,11 +362,14 @@ bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
                 pControlContext->connectionLost = true;
 
                 // Reset Parameters!
-                pControlContext->ctlParms.turnPosition = 0;
-                pControlContext->ctlParms.driveSpeed   = 0;
+                pControlContext->ctlParms.driveParms.turnPosition = 0;
+                pControlContext->ctlParms.driveParms.driveSpeed   = 0;
     
                 // Set that data was changed!
                 anyChangeToStateData=true;
+
+                syncRecv = false;
+                Serial.write("\n");
             }
         }
     }
@@ -429,10 +447,10 @@ void loop()
         if ((currentTime - prevDispTime) > 200) {
             // Debug info...
             char buffer[200];
-            sprintf(buffer, "Steering:%d, Throatle:%d\n", controlContext.ctlParms.turnPosition, controlContext.ctlParms.driveSpeed);
+            sprintf(buffer, "Steering:%d, Throatle:%d\n", controlContext.ctlParms.driveParms.turnPosition, controlContext.ctlParms.driveParms.driveSpeed);
             Serial.print(buffer);
 
-            UpdateDisplay(controlContext);
+            // UpdateDisplay(controlContext);
             prevDispTime = currentTime;
             pendingDisplay = false;
         }
@@ -448,8 +466,8 @@ void loop()
     // ----------------------------------------------------------------------
     // if (controlContextUpdated) {
         // Serial.write("Updating ST\n");
-        bool speedChanged = adjustSpeedAndDirection(controlContext.ctlParms.driveSpeed, 
-                                                    controlContext.ctlParms.turnPosition);
+        bool speedChanged = adjustSpeedAndDirection(controlContext.ctlParms.driveParms.driveSpeed, 
+                                                    controlContext.ctlParms.driveParms.turnPosition);
     // }
 
 
