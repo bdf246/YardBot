@@ -23,7 +23,7 @@
 //   Pin 11 --> Bluetooth RX
 SoftwareSerial mySerial(10, 11); // RX, TX
 
-#define CONTROL_TYPE 0 // 0 for hardware controller, 1 for bluetooth.
+#define CONTROL_TYPE 1 // 0 for hardware controller, 1 for bluetooth.
 
 #if CONTROL_TYPE == 0
     #define CONTROL_SERIAL Serial2
