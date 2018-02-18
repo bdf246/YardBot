@@ -450,7 +450,7 @@ void loop()
             sprintf(buffer, "Steering:%d, Throatle:%d\n", controlContext.ctlParms.driveParms.turnPosition, controlContext.ctlParms.driveParms.driveSpeed);
             Serial.print(buffer);
 
-            // UpdateDisplay(controlContext);
+            UpdateDisplay(controlContext);
             prevDispTime = currentTime;
             pendingDisplay = false;
         }
