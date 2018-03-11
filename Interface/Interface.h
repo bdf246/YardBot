@@ -1,5 +1,6 @@
 
-#include "Interface_Drive.h"
+#include "Interface01Drive.h"
+#include "Interface02Arm.h"
 
 
 // COM_PROTOCOL_VERSION
@@ -21,9 +22,10 @@
 typedef enum {
     COM_FEATURE_DRIVE,
     COM_FEATURE_ARM,
-    COM_FEATURE_RELAYS,
-    COM_FEATURE_AUTO,
-    COM_FEATURE_SENSORS
+    // COM_FEATURE_RELAYS,
+    // COM_FEATURE_AUTO,
+    // COM_FEATURE_SENSORS,
+    COM_FEATURE_EN_N
 } COM_FEATURE_EN;
 
 // Packet type defines:

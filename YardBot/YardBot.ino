@@ -52,15 +52,16 @@ unsigned long currentTime,timeOfLastGoodPacket = 0,timeOfLastTTL = 0,timeOfLastS
 unsigned long prevDispTime = 0;
 
 typedef struct {
-    bool                   connectionLost;
-    COM_FEATURE_DRIVE_ST   ctlParms;
+    bool                   connectionLost[COM_FEATURE_EN_N];
+    COM_FEATURE_DRIVE_ST   driveParms;
+    COM_FEATURE_ARM_ST     armParms;
 } CONTROLCONTEXT_ST;
 
     
-static CONTROLCONTEXT_ST controlContext = {true, { {0, 0 }, 0}};
+static CONTROLCONTEXT_ST controlContext = {{true, true}, { {0, 0 }, 0}};
 
 
-static unsigned long previousTime = 0;
+static unsigned long previousTime[COM_FEATURE_EN_N] = {0, 0};
 
 typedef struct {
     unsigned long currentTime = 0;
@@ -131,7 +132,9 @@ void setup() {
     lcdReset();
     Serial.println("LCD Reset!!!");
 
-    previousTime = millis();
+    for (int i=0; i < COM_FEATURE_EN_N; i++) {
+        previousTime[i] = millis();
+    }
 
     #if CONTROL_TYPE == 1
         setup_bluetooth();
@@ -211,12 +214,12 @@ void allStop() {
 void UpdateDisplay(CONTROLCONTEXT_ST & controlContext, MOTORSTATE_ST & motor) {
     // lcd.setCursor(0,3);
     // TODO:: ensure not too much com. to LCD (update every 1 second)
-    // lcd.print(controlContext.ctlParms.);
+    // lcd.print(controlContext.cdriveParms.);
     //
     char line1[41];
     sprintf(line1, "Target:D:%4d,S:%4d Motor:D:%4d,S:%4d", 
-        controlContext.ctlParms.driveParms.driveSpeed,
-        controlContext.ctlParms.driveParms.turnPosition,
+        controlContext.driveParms.driveParms.driveSpeed,
+        controlContext.driveParms.driveParms.turnPosition,
         motor.currentDrive,
         motor.currentTurn);
     
@@ -227,24 +230,36 @@ void UpdateDisplay(CONTROLCONTEXT_ST & controlContext, MOTORSTATE_ST & motor) {
 
 
 bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
-    bool anyChangeToStateData=false;
-    bool anyKeepAliveStateData=false;
+    bool anyChangeToStateData[COM_FEATURE_EN_N];
+    bool anyKeepAliveStateData[COM_FEATURE_EN_N];
+
+    for (int i=0; i < COM_FEATURE_EN_N; i++) {
+        anyChangeToStateData[i] = false;
+        anyKeepAliveStateData[i] = false;
+    }
 
     // Save a copy of the current control parameters:
-    COM_FEATURE_DRIVE_ST absBodyCompleted = pControlContext->ctlParms;
+    COM_FEATURE_DRIVE_ST updatedDriveParms = pControlContext->driveParms;
+    COM_FEATURE_ARM_ST   updatedArmParms   = pControlContext->armParms;
+
 
     static bool syncRecv = false;
     static bool hdrReceived = false;
     static COM_HEADER_ST       header;
-    static COM_FEATURE_DRIVE_ST absBody;
+    static COM_FEATURE_DRIVE_ST driveParmsBody;
+    static COM_FEATURE_ARM_ST   armParmsBody;
+    static char * bufPtrs[COM_FEATURE_EN_N] = {(char*) &driveParmsBody, (char*) &armParmsBody};
+    static int parmStructSizes[COM_FEATURE_EN_N] = {sizeof(driveParmsBody), sizeof(armParmsBody)};
     // static COM_RELATIVE_ST     relBody;
     static char * buf = (char *) &header;
     static int idx=0;
     static int bodySize=0;
 
     int hdrSize = sizeof(header);
-    int absBodySize = sizeof(absBody);
     // int relBodySize = sizeof(relBody);
+
+    char * orgParms[COM_FEATURE_EN_N] = {(char*)&(pControlContext->driveParms), (char*)&(pControlContext->armParms)};
+    char * updatedParms[COM_FEATURE_EN_N] = {(char*)&updatedDriveParms, (char*)&updatedArmParms};
 
     // Read a packet:
     while (CONTROL_SERIAL.available()) {
@@ -276,17 +291,22 @@ bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
                         // Serial.write("\n");
                         // Move on to body;
                         idx = 0;
-                        if ((header.featureId == COM_FEATURE_DRIVE) 
-                         && (header.packetType == COM_PACKETTYPE_STATE)) {
-                            hdrReceived = true;
-                            buf = (char *) &absBody;
-                            bodySize = absBodySize;
+                        if (header.packetType == COM_PACKETTYPE_STATE) {
+                            for (int i=0; i < COM_FEATURE_EN_N; i++) {
+                                if (header.featureId == i) {
+                                    hdrReceived = true;
+                                    buf = bufPtrs[i];
+                                    bodySize = parmStructSizes[i];
+                                }
+                            }
                         }
                         // else if (header.packetType == COM_PACKETTYPE_RELATIVE) {
                             // buf = (char *) &relBody;
                             // bodySize = relBodySize;
                         // }
-                        else {
+                        //
+
+                        if (!hdrReceived) {
                             // Invalid body type. Resume looking for sync.
                             // TODO: First see if sync re-occurd already in header and shift if so.
                             //       Do same for body later if checksum fails? Probably need better way.
@@ -309,13 +329,18 @@ bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
                         
                         // 
                         if (header.packetType == COM_PACKETTYPE_STATE) {
-                            // - Update context:
-                            if (memcmp((char *)&absBodyCompleted, (char *)&absBody, absBodySize) != 0) {
-                                absBodyCompleted = absBody;
-                                // Serial.print("Saving iterim body\n");
-                                anyChangeToStateData=true;
+                            for (int i=0; i < COM_FEATURE_EN_N; i++) {
+                                if (header.featureId == i) {
+                                    // - Update context:
+                                    if (memcmp(updatedParms[i], bufPtrs[i], parmStructSizes[i]) != 0) {
+                                        memcpy(updatedParms[i], bufPtrs[i], parmStructSizes[i]);
+                                        // updatedDriveParms = driveParmsBody;
+                                        // Serial.print("Saving iterim body\n");
+                                        anyChangeToStateData[i]=true;
+                                    }
+                                    anyKeepAliveStateData[i] = true;
+                                }
                             }
-                            anyKeepAliveStateData = true;
                         }
                         // else if (header.packetType == COM_PACKETTYPE_RELATIVE) {
                             // // Record change for later exectuion...
@@ -334,51 +359,65 @@ bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
         }
     }
 
+    // No more data coming in... use what we got:
+    // For each feature, copy its data if received, else check for timeout.
+
     unsigned long curTime = millis();
 
-    if (anyKeepAliveStateData) {
-        // Serial.write("HERE\n");
-        pControlContext->connectionLost = false;
-        previousTime = curTime;
+    for (int i=0; i < COM_FEATURE_EN_N; i++) {
+        if (anyKeepAliveStateData[i]) {
+            // Serial.write("HERE\n");
+            pControlContext->connectionLost[i] = false;
+            previousTime[i] = curTime;
 
-        if (memcmp((char *)&(pControlContext->ctlParms), (char *)&absBodyCompleted, absBodySize) != 0) {
-            pControlContext->ctlParms = absBodyCompleted;
-            anyChangeToStateData=true;
-            // Serial.print("Saving body");
+            // TODO carry on from this point...
+            if (memcmp(orgParms[i], updatedParms[i], parmStructSizes[i]) != 0) {
+                memcpy(orgParms[i], updatedParms[i], parmStructSizes[i]);
+                anyChangeToStateData[i]=true;
+            }
+            else {
+                anyChangeToStateData[i]=false;
+            }
         }
         else {
-            anyChangeToStateData=false;
-        }
-    }
-    else {
-        // Check for keepalive:
-
-        // If connection was not prevsiously noted as lost:
-        if (!(pControlContext->connectionLost)) {
-            // If its been too long since a control packet was received:
-            if ((curTime - previousTime) > COM_MAX_SIGNAL_LOST_TIME_IN_MS) {
-                // char buffer[300];
-                // sprintf(buffer, "prevTime:%lu, curTime:%lu\n", previousTime, curTime);
-                // Serial.println(buffer);
-
-                Serial.println("Connection Lost!");
-                // ALL STOP
-                pControlContext->connectionLost = true;
-
-                // Reset Parameters!
-                pControlContext->ctlParms.driveParms.turnPosition = 0;
-                pControlContext->ctlParms.driveParms.driveSpeed   = 0;
+            // Check for keepalive:
     
-                // Set that data was changed!
-                anyChangeToStateData=true;
-
-                syncRecv = false;
-                Serial.write("\n");
+            // If connection was not prevsiously noted as lost:
+            if (!(pControlContext->connectionLost[i])) {
+                // If its been too long since a control packet was received:
+                if ((curTime - previousTime[i]) > COM_MAX_SIGNAL_LOST_TIME_IN_MS) {
+                    // char buffer[300];
+                    // sprintf(buffer, "prevTime:%lu, curTime:%lu\n", previousTime, curTime);
+                    // Serial.println(buffer);
+    
+                    Serial.println("Connection Lost!");
+                    // ALL STOP
+                    pControlContext->connectionLost[i] = true;
+    
+                    // Reset Parameters!
+                    // TODO - how to remove this?
+                    if (i == COM_FEATURE_DRIVE) {
+                        pControlContext->driveParms.driveParms.turnPosition = 0;
+                        pControlContext->driveParms.driveParms.driveSpeed   = 0;
+                    }
+        
+                    // Set that data was changed!
+                    anyChangeToStateData[i]=true;
+    
+                    // Removed resetting of sync as we could be in the process of receiving a packet;
+                    // syncRecv = false;
+                    // Serial.write("\n");
+                }
             }
         }
     }
 
-    return (anyChangeToStateData);
+    bool anyChangeToStateData_all = false;
+    for (int i=0; i < COM_FEATURE_EN_N; i++) {
+        if (anyChangeToStateData[i]) anyChangeToStateData_all = true;
+    }
+
+    return (anyChangeToStateData_all);
 }
 
  
@@ -434,7 +473,7 @@ void loop()
         if (pendingDisplay) {
             // Debug info...
             char buffer[200];
-            sprintf(buffer, "Steering:%d, Throatle:%d\n", controlContext.ctlParms.driveParms.turnPosition, controlContext.ctlParms.driveParms.driveSpeed);
+            sprintf(buffer, "Steering:%d, Throatle:%d\n", controlContext.driveParms.driveParms.turnPosition, controlContext.driveParms.driveParms.driveSpeed);
             Serial.print(buffer);
             pendingDisplay = false;
         }
@@ -453,10 +492,10 @@ void loop()
     // ----------------------------------------------------------------------
     // if (controlContextUpdated) {
         // Serial.write("Updating ST\n");
-        bool speedChanged = adjustSpeedAndDirection(controlContext.ctlParms.driveParms.driveSpeed, 
-                                                    controlContext.ctlParms.driveParms.turnPosition,
-                                                    controlContext.ctlParms.halt,
-                                                    controlContext.connectionLost);
+        bool speedChanged = adjustSpeedAndDirection(controlContext.driveParms.driveParms.driveSpeed, 
+                                                    controlContext.driveParms.driveParms.turnPosition,
+                                                    controlContext.driveParms.halt,
+                                                    controlContext.connectionLost[COM_FEATURE_DRIVE]);
     // }
 
 
