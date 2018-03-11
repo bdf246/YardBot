@@ -129,7 +129,7 @@ void setup() {
     lcd.print("Initializing..."); 
     delay(3000);
     allStop(); 
-    lcdReset();
+    DispalyInit();
     Serial.println("LCD Reset!!!");
 
     for (int i=0; i < COM_FEATURE_EN_N; i++) {
@@ -174,13 +174,6 @@ void setup_bluetooth() {
 #endif
 
 
-
-void lcdReset() {
-    lcd.clear();
-    lcd.home();
-    // lcd.print("(X:");lcd.print(PacketsRX[1]);lcd.print(",Y:");lcd.print(PacketsRX[2]);lcd.print(") sum=");lcd.print(PacketsRX[0]);
-}
-
 // The Sabertooth won't act on mixed mode until
 // it has received power levels for BOTH throttle and turning, since it
 // mixes the two together to get diff-drive power levels for both motors.
@@ -211,21 +204,50 @@ void allStop() {
     // }
 // }
 
+void DispalyInit() {
+    // lcd.setCursor(0,3);
+    // TODO:: ensure not too much com. to LCD (update every 1 second)
+    // lcd.print(controlContext.cdriveParms.);
+    //
+    
+    lcd.clear();
+    lcd.home();
+
+    char line[100];
+
+    lcd.setCursor(0,0);
+    sprintf(line, "Target:D:    ,S:    ");
+    lcd.print(line);
+
+    lcd.setCursor(0,1);
+    sprintf(line, " Motor:D:    ,S:    ");
+    lcd.print(line);
+
+}
+
 void UpdateDisplay(CONTROLCONTEXT_ST & controlContext, MOTORSTATE_ST & motor) {
     // lcd.setCursor(0,3);
     // TODO:: ensure not too much com. to LCD (update every 1 second)
     // lcd.print(controlContext.cdriveParms.);
     //
-    char line1[41];
-    sprintf(line1, "Target:D:%4d,S:%4d Motor:D:%4d,S:%4d", 
-        controlContext.driveParms.driveParms.driveSpeed,
-        controlContext.driveParms.driveParms.turnPosition,
-        motor.currentDrive,
-        motor.currentTurn);
-    
-    lcd.clear();
-    lcd.home();
-    lcd.print(line1);
+
+    char item[10];
+
+    lcd.setCursor(9, 0);
+    sprintf(item, "%4d", controlContext.driveParms.driveParms.driveSpeed);
+    lcd.print(item);
+    lcd.setCursor(16, 0);
+    sprintf(item, "%4d", controlContext.driveParms.driveParms.turnPosition);
+    lcd.print(item);
+
+    lcd.setCursor(9, 1);
+    sprintf(item, "%4d", motor.currentDrive);
+    lcd.print(item);
+    lcd.setCursor(16, 1);
+    sprintf(item, "%4d", motor.currentTurn);
+    lcd.print(item);
+
+
 }
 
 
