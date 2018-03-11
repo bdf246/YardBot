@@ -223,6 +223,10 @@ void DispalyInit() {
     sprintf(line, " Motor:D:    ,S:    ");
     lcd.print(line);
 
+    lcd.setCursor(0,2);
+    sprintf(line, "ArmPos:    ");
+    lcd.print(line);
+
 }
 
 void UpdateDisplay(CONTROLCONTEXT_ST & controlContext, MOTORSTATE_ST & motor) {
@@ -247,6 +251,9 @@ void UpdateDisplay(CONTROLCONTEXT_ST & controlContext, MOTORSTATE_ST & motor) {
     sprintf(item, "%4d", motor.currentTurn);
     lcd.print(item);
 
+    lcd.setCursor(9, 2);
+    sprintf(item, "%4d", controlContext.armParms.armParms.armPosition);
+    lcd.print(item);
 
 }
 
