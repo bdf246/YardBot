@@ -9,6 +9,7 @@
 
 #define ROBOT_NAME "BradsYardBot"
 
+
 // If you haven't configured your device before use this
 //#define BLUETOOTH_SPEED 38400 //This is the default baudrate that HC-05 uses
 // If you are modifying your existing configuration, use this:
@@ -51,17 +52,30 @@ LiquidCrystal_I2C  lcd(LCD_I2C,LCD_En_pin,LCD_Rw_pin,LCD_Rs_pin,LCD_D4_pin,LCD_D
 unsigned long currentTime,timeOfLastGoodPacket = 0,timeOfLastTTL = 0,timeOfLastStatus=0;
 unsigned long prevDispTime = 0;
 
+const int MAX_TIME_FOR_KEEPALIVE_IN_MS = 400;
+
 typedef struct {
-    bool                   connectionLost[COM_FEATURE_EN_N];
-    COM_FEATURE_DRIVE_ST   driveParms;
-    COM_FEATURE_ARM_ST     armParms;
+    int steering; // 0to49->Going Left, 50->Centre, 51to100->Going Right
+    int throatle; // 0to49->Going Backward, 50->Stopped, 51to100->Going Forward
+} PARAMS_RC_ST;
+
+typedef struct {
+    bool           connectionLost;
+    PARAMS_RC_ST   rcParams;
 } CONTROLCONTEXT_ST;
+// typedef struct {
+    // bool                   connectionLost[COM_FEATURE_EN_N];
+    // COM_FEATURE_DRIVE_ST   driveParms;
+    // COM_FEATURE_ARM_ST     armParms;
+// } CONTROLCONTEXT_ST;
 
-    
-static CONTROLCONTEXT_ST controlContext = {{true, true}, { {0, 0 }, 0}};
+static CONTROLCONTEXT_ST controlContext = {true, {50, 50}};
+// static CONTROLCONTEXT_ST controlContext = {{true, true}, { {0, 0 }, 0}};
 
+// For keep alive:
+unsigned long previousTime = 0;
+// static unsigned long previousTime[COM_FEATURE_EN_N] = {0, 0};
 
-static unsigned long previousTime[COM_FEATURE_EN_N] = {0, 0};
 
 typedef struct {
     unsigned long currentTime = 0;
@@ -132,9 +146,10 @@ void setup() {
     DispalyInit();
     Serial.println("LCD Reset!!!");
 
-    for (int i=0; i < COM_FEATURE_EN_N; i++) {
-        previousTime[i] = millis();
-    }
+    previousTime = millis();
+    // for (int i=0; i < COM_FEATURE_EN_N; i++) {
+        // previousTime[i] = millis();
+    // }
 
     #if CONTROL_TYPE == 1
         setup_bluetooth();
@@ -238,10 +253,10 @@ void UpdateDisplay(CONTROLCONTEXT_ST & controlContext, MOTORSTATE_ST & motor) {
     char item[10];
 
     lcd.setCursor(9, 0);
-    sprintf(item, "%4d", controlContext.driveParms.driveParms.driveSpeed);
+    sprintf(item, "%4d", controlContext.rcParams.throatle);
     lcd.print(item);
     lcd.setCursor(16, 0);
-    sprintf(item, "%4d", controlContext.driveParms.driveParms.turnPosition);
+    sprintf(item, "%4d", controlContext.rcParams.steering);
     lcd.print(item);
 
     lcd.setCursor(9, 1);
@@ -251,13 +266,101 @@ void UpdateDisplay(CONTROLCONTEXT_ST & controlContext, MOTORSTATE_ST & motor) {
     sprintf(item, "%4d", motor.currentTurn);
     lcd.print(item);
 
-    lcd.setCursor(9, 2);
-    sprintf(item, "%4d", controlContext.armParms.armParms.armPosition);
-    lcd.print(item);
+    // lcd.setCursor(9, 2);
+    // sprintf(item, "%4d", controlContext.armParms.armParms.armPosition);
+    // lcd.print(item);
 
 }
 
+#define STR_LEN 10
+bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
+    bool anyData=false;
+    char str[STR_LEN];
+    char curSteeringStr[STR_LEN] = "";
+    char curThroatleStr[STR_LEN] = "";
+    char curModeStr[STR_LEN] = "";
+    char curMaxspeedStr[STR_LEN] = "";
+    char curMinspeedStr[STR_LEN] = "";
+    str[0] = '\0';
+    int idx = 0;
+    // Serial.println("E");
+    while (mySerial.available()) {
+        // Serial.println("Ei");
+        if (idx < (STR_LEN-1)) {
+            char ch = mySerial.read();
+            Serial.write(ch);
+            if (ch == ' ' || (idx == (STR_LEN-1))) {
+                idx = 0;
+                str[0] = '\0';
+            }
+            else {
+                str[idx++] = ch;
+                str[idx] = '\0';
+                if (str[0] == 's') {
+                    strncpy(curSteeringStr, str, STR_LEN);
+                }
+                else if (str[0] == 't') {
+                    strncpy(curThroatleStr, str, STR_LEN);
+                }
+                // else if (str[0] == 'm') {
+                    // strncpy(curModeStr, str, STR_LEN);
+                // }
+                // else if (str[0] == 'a') {
+                    // strncpy(curMaxspeedStr, str, STR_LEN);
+                // }
+                // else if (str[0] == 'i') {
+                    // strncpy(curMinspeedStr, str, STR_LEN);
+                // }
+            }
+        }
+        anyData=true;
+    }
+    // Serial.println("Eo");
 
+    unsigned long curTime = millis();
+
+    if (anyData) {
+        pControlContext->connectionLost = false;
+        previousTime = curTime;
+
+        if (pControlContext) {
+            if (curSteeringStr[0] != '\0')       pControlContext->rcParams.steering = atoi(&(curSteeringStr[1]));
+            if (curThroatleStr[0] != '\0')       pControlContext->rcParams.throatle = atoi(&(curThroatleStr[1]));
+            // if (strcmp(&(curModeStr[1]), "RC") == 0)   pControlContext->mode = CONTROLMODE_RC;
+            // if (strcmp(&(curModeStr[1]), "AUTO") == 0) pControlContext->mode = CONTROLMODE_AUTO;
+            // if (curMaxspeedStr[0] != '\0')       pControlContext->autoParams.maxSpeed = atoi(&(curMaxspeedStr[1]));
+            // if (curMinspeedStr[0] != '\0')       pControlContext->autoParams.minSpeed = atoi(&(curMinspeedStr[1]));
+        }
+    }
+    else {
+        // Serial.print(".");
+        // Check for keepalive:
+        //
+        // If connection was not prevsiously noted as lost:
+        if (!(pControlContext->connectionLost)) {
+            char buffer[100];
+            sprintf(buffer, "prevTime:%lu, curTime:%lu", previousTime, curTime);
+            Serial.println(buffer);
+
+            // If its been too long since a control packet was received:
+            if ((curTime - previousTime) > MAX_TIME_FOR_KEEPALIVE_IN_MS) {
+                Serial.println("Connection Lost!");
+                // ALL STOP
+                pControlContext->connectionLost = true;
+                pControlContext->rcParams.steering = 50;
+                pControlContext->rcParams.throatle = 50;
+    
+                // Set that data was changed!
+                anyData=true;
+            }
+        }
+    }
+
+
+    return (anyData);
+}
+
+#if 0
 bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
     bool anyChangeToStateData[COM_FEATURE_EN_N];
     bool anyKeepAliveStateData[COM_FEATURE_EN_N];
@@ -448,6 +551,7 @@ bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
 
     return (anyChangeToStateData_all);
 }
+#endif 
 
  
 
@@ -502,7 +606,8 @@ void loop()
         if (pendingDisplay) {
             // Debug info...
             char buffer[200];
-            sprintf(buffer, "Steering:%d, Throatle:%d\n", controlContext.driveParms.driveParms.turnPosition, controlContext.driveParms.driveParms.driveSpeed);
+            sprintf(buffer, "Steering:%d, Throatle:%d\n", controlContext.rcParams.steering, controlContext.rcParams.throatle);
+            // sprintf(buffer, "Steering:%d, Throatle:%d\n", controlContext.driveParms.driveParms.turnPosition, controlContext.driveParms.driveParms.driveSpeed);
             Serial.print(buffer);
             pendingDisplay = false;
         }
@@ -521,10 +626,14 @@ void loop()
     // ----------------------------------------------------------------------
     // if (controlContextUpdated) {
         // Serial.write("Updating ST\n");
-        bool speedChanged = adjustSpeedAndDirection(controlContext.driveParms.driveParms.driveSpeed, 
-                                                    controlContext.driveParms.driveParms.turnPosition,
-                                                    controlContext.driveParms.halt,
-                                                    controlContext.connectionLost[COM_FEATURE_DRIVE]);
+        bool speedChanged = adjustSpeedAndDirection(controlContext.rcParams.throatle, 
+                                                    controlContext.rcParams.steering,
+                                                    0,
+                                                    controlContext.connectionLost);
+        // bool speedChanged = adjustSpeedAndDirection(controlContext.driveParms.driveParms.driveSpeed, 
+                                                    // controlContext.driveParms.driveParms.turnPosition,
+                                                    // controlContext.driveParms.halt,
+                                                    // controlContext.connectionLost[COM_FEATURE_DRIVE]);
     // }
 
 
