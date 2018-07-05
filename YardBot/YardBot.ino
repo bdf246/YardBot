@@ -1,38 +1,31 @@
+#include <SoftwareSerial.h>
+
 #include <SabertoothSimplified.h>
 #include <Wire.h>
 #include <LCD.h>
 #include <LiquidCrystal_I2C.h>
 
 #include "Interface.h"
+#include "src/bt_setup/bt_setup.h"
 
-
-
-#define ROBOT_NAME "BradsYardBot"
-
-// If you haven't configured your device before use this
-//#define BLUETOOTH_SPEED 38400 //This is the default baudrate that HC-05 uses
-// If you are modifying your existing configuration, use this:
-// #define BLUETOOTH_SPEED 57600
-#define BLUETOOTH_SPEED 9600
-
-#include <SoftwareSerial.h>
-
+#define BLUETOOTH_NAME  "YardBot"
+#define BLUETOOTH_PIN   "1234"
+#define BLUETOOTH_SPEED 57600
 
 // Swap RX/TX connections on bluetooth chip
 //   Pin 10 --> Bluetooth TX
 //   Pin 11 --> Bluetooth RX
-SoftwareSerial mySerial(10, 11); // RX, TX
+SoftwareSerial btSerial(10, 11); // RX, TX
 
 #define CONTROL_TYPE 1 // 0 for hardware controller, 1 for bluetooth.
 
 #if CONTROL_TYPE == 0
     #define CONTROL_SERIAL Serial2
 #elif CONTROL_TYPE == 1
-    #define CONTROL_SERIAL mySerial
+    #define CONTROL_SERIAL btSerial
 #else
     #error
 #endif
-
 
 
 // Find your address from I2C Scanner function and add it here:
@@ -94,15 +87,6 @@ MOTORSTATE_ST Motor;
 SabertoothSimplified ST(Serial3); 
 
 
-void waitForResponse() {
-    delay(1000);
-    while (mySerial.available()) {
-      Serial.write(mySerial.read());
-    }
-    Serial.write("\n");
-}
-
-
 
 void setup() {
     // H-Bridge
@@ -137,41 +121,10 @@ void setup() {
     }
 
     #if CONTROL_TYPE == 1
-        setup_bluetooth();
+    BT_RC_EN bt_rc = bt_setup(BLUETOOTH_NAME, BLUETOOTH_PIN, BLUETOOTH_SPEED, "ka");
     #endif
 }
 
-#if CONTROL_TYPE == 1
-void setup_bluetooth() {
-
-    Serial.println("Starting config");
-    mySerial.begin(BLUETOOTH_SPEED);
-    delay(1000);
-
-    // Should respond with OK
-    mySerial.print("AT\r\n");
-    waitForResponse();
-
-    // Should respond with its version
-    mySerial.print("AT+VERSION\r\n");
-    waitForResponse();
-
-    // Set pin to 0000
-    mySerial.print("AT+PSWD=0000\r\n");
-    waitForResponse();
-
-    // Set the name to ROBOT_NAME
-    String rnc = String("AT+NAME=") + String(ROBOT_NAME) + String("\r\n"); 
-    mySerial.print(rnc);
-    waitForResponse();
-
-    // Set baudrate to 57600
-    mySerial.print("AT+UART=57600,0,0\r\n");
-    waitForResponse();
-
-    Serial.println("Done!");
-}
-#endif
 
 
 // The Sabertooth won't act on mixed mode until
