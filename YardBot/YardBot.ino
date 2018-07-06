@@ -49,6 +49,7 @@ const int MAX_TIME_FOR_KEEPALIVE_IN_MS = 400;
 typedef struct {
     int steering; // -100 (left) to 0 (no turn) to 100 (right)
     int throatle; // -100 (reverse) to 0 (stopped) to 100 (forward)
+    int throatleHalt; // 0, 1, 2
 } PARAMS_RC_ST;
 
 typedef struct {
@@ -61,7 +62,7 @@ typedef struct {
     // COM_FEATURE_ARM_ST     armParms;
 // } CONTROLCONTEXT_ST;
 
-static CONTROLCONTEXT_ST controlContext = {true, {0, 0}};
+static CONTROLCONTEXT_ST controlContext = {true, {0, 0, 0}};
 // static CONTROLCONTEXT_ST controlContext = {{true, true}, { {0, 0 }, 0}};
 
 // For keep alive:
@@ -227,42 +228,77 @@ void UpdateDisplay(CONTROLCONTEXT_ST & controlContext, MOTORSTATE_ST & motor) {
 #define STR_LEN 10
 bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
     bool anyData=false;
-    char str[STR_LEN];
+
+    static char str[STR_LEN] = "";
+    static int idx = 0;
+
+    static uint32_t invalidChecksums=0;
+
     char curSteeringStr[STR_LEN] = "";
     char curThroatleStr[STR_LEN] = "";
     char curModeStr[STR_LEN] = "";
     char curMaxspeedStr[STR_LEN] = "";
     char curMinspeedStr[STR_LEN] = "";
     str[0] = '\0';
-    int idx = 0;
     // Serial.println("E");
     while (btSerial.available()) {
         // Serial.println("Ei");
         if (idx < (STR_LEN-1)) {
             char ch = btSerial.read();
-            Serial.write(ch);
-            if (ch == ' ' || (idx == (STR_LEN-1))) {
+            // Serial.write(ch);
+            str[idx++] = ch;
+            if (ch == ' ') {
+                // Terminate the string, after the space char:
+                str[idx] = '\0';
+
+                if (strcmp(str, "ka ") != 0) {
+    
+                    // Verify the checksum char:
+                    // Added up all bytes to get a number, then translate that number into
+                    // valid
+                    // 0x21(!) through 0x7E(~) are all non space printable characters.
+                    #define FIRST_PRINTABLE_CHAR 0x21
+                    #define LAST_PRINTABLE_CHAR 0x7E
+                    #define NUM_PRINTABLE_CHARS (LAST_PRINTABLE_CHAR + 1 - FIRST_PRINTABLE_CHAR)
+                    uint32_t val = 0;
+                    // idx-1 to exclude the space and checksum chars in calculation:
+                    for (int j=0; j < (idx-2); j++) {
+                        val += (uint16_t) str[j];
+                    }
+                    char calculatdChecksum = FIRST_PRINTABLE_CHAR + (val % NUM_PRINTABLE_CHARS);
+    
+                    if (calculatdChecksum != str[idx-2]) {
+                        invalidChecksums++;
+    
+                        // Terminate the string leaving the checksum char present:
+                        str[idx-1] = '\0';
+                        // Serial.print("Invalid Checksum: ");
+                        // Serial.println(str);
+                    }
+                    else {
+        
+                        // Record data we have:
+                        if (str[0] == 's') {
+                            strncpy(curSteeringStr, str, STR_LEN);
+                        }
+                        else if (str[0] == 't') {
+                            strncpy(curThroatleStr, str, STR_LEN);
+                        }
+                        // else if (str[0] == 'm') {
+                            // strncpy(curModeStr, str, STR_LEN);
+                        // }
+                        // else if (str[0] == 'a') {
+                            // strncpy(curMaxspeedStr, str, STR_LEN);
+                        // }
+                        // else if (str[0] == 'i') {
+                            // strncpy(curMinspeedStr, str, STR_LEN);
+                        // }
+                    }
+                }
+    
+                // Restart string:
                 idx = 0;
                 str[0] = '\0';
-            }
-            else {
-                str[idx++] = ch;
-                str[idx] = '\0';
-                if (str[0] == 's') {
-                    strncpy(curSteeringStr, str, STR_LEN);
-                }
-                else if (str[0] == 't') {
-                    strncpy(curThroatleStr, str, STR_LEN);
-                }
-                // else if (str[0] == 'm') {
-                    // strncpy(curModeStr, str, STR_LEN);
-                // }
-                // else if (str[0] == 'a') {
-                    // strncpy(curMaxspeedStr, str, STR_LEN);
-                // }
-                // else if (str[0] == 'i') {
-                    // strncpy(curMinspeedStr, str, STR_LEN);
-                // }
             }
         }
         anyData=true;
@@ -276,8 +312,31 @@ bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
         previousTime = curTime;
 
         if (pControlContext) {
-            if (curSteeringStr[0] != '\0')       pControlContext->rcParams.steering = (atoi(&(curSteeringStr[1])) - 50)*2;
-            if (curThroatleStr[0] != '\0')       pControlContext->rcParams.throatle = (atoi(&(curThroatleStr[1])) - 50)*2;
+            if (curSteeringStr[0] != '\0') {
+                // Immediately send it back as acknoledgement:
+                // btSerial.write(curSteeringStr);
+
+                // Now remove the space and checksum characters from the end of the string:
+                curSteeringStr[strlen(curSteeringStr)-2] = '\0';
+                pControlContext->rcParams.steering = (atoi(&(curSteeringStr[1])) - 50)*2;
+            }
+            if (curThroatleStr[0] != '\0') {
+                // Immediately send it back as acknoledgement:
+                // Otherwise sender will keep sending last value every ~200ms.
+                // Sender only checks for this if it hasn't send another update in the last ~200ms.
+                // btSerial.write(curThroatleStr);
+
+                // Now remove the space and checksum characters from the end of the string:
+                curThroatleStr[strlen(curThroatleStr)-2] = '\0';
+                if (strcmp(curThroatleStr, "tHALT") == 0) {
+                    pControlContext->rcParams.throatleHalt = 2;
+                    pControlContext->rcParams.throatle = 0;
+                } 
+                else {
+                    pControlContext->rcParams.throatleHalt = 0;
+                    pControlContext->rcParams.throatle = (atoi(&(curThroatleStr[1])) - 50)*2;
+                }
+            }
             // if (strcmp(&(curModeStr[1]), "RC") == 0)   pControlContext->mode = CONTROLMODE_RC;
             // if (strcmp(&(curModeStr[1]), "AUTO") == 0) pControlContext->mode = CONTROLMODE_AUTO;
             // if (curMaxspeedStr[0] != '\0')       pControlContext->autoParams.maxSpeed = atoi(&(curMaxspeedStr[1]));
@@ -307,7 +366,6 @@ bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
             }
         }
     }
-
 
     return (anyData);
 }
@@ -590,10 +648,19 @@ void loop()
 
     if ((currentTime - prevDispTime) > 400) {
         if (pendingDisplay) {
-            // Debug info...
+            char tbuf[10];
             char buffer[200];
-            sprintf(buffer, "Steering:%d, Throatle:%d\n", controlContext.rcParams.steering, controlContext.rcParams.throatle);
-            // sprintf(buffer, "Steering:%d, Throatle:%d\n", controlContext.driveParms.driveParms.turnPosition, controlContext.driveParms.driveParms.driveSpeed);
+            if (controlContext.rcParams.throatleHalt > 0) {
+                sprintf(tbuf, "%s", "HALT");
+            }
+            else {
+                sprintf(tbuf, "%d", controlContext.rcParams.throatle);
+            }
+            sprintf(buffer, "Throatle:%s, Cur:%d, Steering:%d Cur:%d\n", 
+                    tbuf,
+                    convFromByte(Motor.currentDrive),
+                    controlContext.rcParams.steering,
+                    convFromByte(Motor.currentTurn));
             Serial.print(buffer);
             pendingDisplay = false;
         }
@@ -614,7 +681,7 @@ void loop()
         // Serial.write("Updating ST\n");
         bool speedChanged = adjustSpeedAndDirection(convToByte(controlContext.rcParams.throatle), 
                                                     convToByte(controlContext.rcParams.steering),
-                                                    0,
+                                                    controlContext.rcParams.throatleHalt,
                                                     controlContext.connectionLost);
         // bool speedChanged = adjustSpeedAndDirection(controlContext.driveParms.driveParms.driveSpeed, 
                                                     // controlContext.driveParms.driveParms.turnPosition,
