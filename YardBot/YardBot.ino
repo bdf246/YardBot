@@ -290,9 +290,9 @@ bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
         //
         // If connection was not prevsiously noted as lost:
         if (!(pControlContext->connectionLost)) {
-            char buffer[100];
-            sprintf(buffer, "prevTime:%lu, curTime:%lu", previousTime, curTime);
-            Serial.println(buffer);
+            // char buffer[100];
+            // sprintf(buffer, "prevTime:%lu, curTime:%lu", previousTime, curTime);
+            // Serial.println(buffer);
 
             // If its been too long since a control packet was received:
             if ((curTime - previousTime) > MAX_TIME_FOR_KEEPALIVE_IN_MS) {
