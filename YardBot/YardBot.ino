@@ -47,8 +47,8 @@ unsigned long prevDispTime = 0;
 const int MAX_TIME_FOR_KEEPALIVE_IN_MS = 400;
 
 typedef struct {
-    int steering; // 0to49->Going Left, 50->Centre, 51to100->Going Right
-    int throatle; // 0to49->Going Backward, 50->Stopped, 51to100->Going Forward
+    int steering; // -100 (left) to 0 (no turn) to 100 (right)
+    int throatle; // -100 (reverse) to 0 (stopped) to 100 (forward)
 } PARAMS_RC_ST;
 
 typedef struct {
@@ -61,7 +61,7 @@ typedef struct {
     // COM_FEATURE_ARM_ST     armParms;
 // } CONTROLCONTEXT_ST;
 
-static CONTROLCONTEXT_ST controlContext = {true, {50, 50}};
+static CONTROLCONTEXT_ST controlContext = {true, {0, 0}};
 // static CONTROLCONTEXT_ST controlContext = {{true, true}, { {0, 0 }, 0}};
 
 // For keep alive:
@@ -212,10 +212,10 @@ void UpdateDisplay(CONTROLCONTEXT_ST & controlContext, MOTORSTATE_ST & motor) {
     lcd.print(item);
 
     lcd.setCursor(9, 1);
-    sprintf(item, "%4d", motor.currentDrive);
+    sprintf(item, "%4d", convFromByte(motor.currentDrive));
     lcd.print(item);
     lcd.setCursor(16, 1);
-    sprintf(item, "%4d", motor.currentTurn);
+    sprintf(item, "%4d", convFromByte(motor.currentTurn));
     lcd.print(item);
 
     // lcd.setCursor(9, 2);
@@ -276,8 +276,8 @@ bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
         previousTime = curTime;
 
         if (pControlContext) {
-            if (curSteeringStr[0] != '\0')       pControlContext->rcParams.steering = atoi(&(curSteeringStr[1]));
-            if (curThroatleStr[0] != '\0')       pControlContext->rcParams.throatle = atoi(&(curThroatleStr[1]));
+            if (curSteeringStr[0] != '\0')       pControlContext->rcParams.steering = (atoi(&(curSteeringStr[1])) - 50)*2;
+            if (curThroatleStr[0] != '\0')       pControlContext->rcParams.throatle = (atoi(&(curThroatleStr[1])) - 50)*2;
             // if (strcmp(&(curModeStr[1]), "RC") == 0)   pControlContext->mode = CONTROLMODE_RC;
             // if (strcmp(&(curModeStr[1]), "AUTO") == 0) pControlContext->mode = CONTROLMODE_AUTO;
             // if (curMaxspeedStr[0] != '\0')       pControlContext->autoParams.maxSpeed = atoi(&(curMaxspeedStr[1]));
@@ -299,8 +299,8 @@ bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
                 Serial.println("Connection Lost!");
                 // ALL STOP
                 pControlContext->connectionLost = true;
-                pControlContext->rcParams.steering = 50;
-                pControlContext->rcParams.throatle = 50;
+                pControlContext->rcParams.steering = 0;
+                pControlContext->rcParams.throatle = 0;
     
                 // Set that data was changed!
                 anyData=true;
@@ -539,6 +539,40 @@ bool adjustSpeedAndDirection(int8_t targetDrive, int8_t targetTurn, int8_t halt,
     return (rv);
 }
 
+// Takes -127 to 127 range and converts to -100 to +100:
+int8_t convFromByte(int val)
+{
+    int32_t mult = ((int32_t) val)*100;
+    int32_t newVal = mult/127;
+
+    // Rounding:
+    if      ((mult%127) >  63) newVal++;
+    else if ((mult%127) < -63) newVal--;
+
+    // Ensure valid range:
+    if      (newVal >  100) newVal =  100;
+    else if (newVal < -100) newVal = -100;
+
+    return (newVal);
+}
+
+// Takes -100 to 100 range and converts to -127 to +127:
+int8_t convToByte(int val)
+{
+    int32_t mult = ((int32_t) val)*127;
+    int32_t newVal = mult/100;
+
+    // Rounding:
+    if      ((mult%100) >  49) newVal++;
+    else if ((mult%100) < -49) newVal--;
+
+    // Ensure valid range:
+    if      (newVal >  127) newVal =  127;
+    else if (newVal < -127) newVal = -127;
+
+    return (newVal);
+}
+
 void loop()
 {
     static bool pendingDisplay=true; // start with an update to the display...
@@ -578,8 +612,8 @@ void loop()
     // ----------------------------------------------------------------------
     // if (controlContextUpdated) {
         // Serial.write("Updating ST\n");
-        bool speedChanged = adjustSpeedAndDirection(controlContext.rcParams.throatle, 
-                                                    controlContext.rcParams.steering,
+        bool speedChanged = adjustSpeedAndDirection(convToByte(controlContext.rcParams.throatle), 
+                                                    convToByte(controlContext.rcParams.steering),
                                                     0,
                                                     controlContext.connectionLost);
         // bool speedChanged = adjustSpeedAndDirection(controlContext.driveParms.driveParms.driveSpeed, 
