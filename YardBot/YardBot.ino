@@ -98,7 +98,7 @@ void setup() {
     #endif
 
     // Debug:
-    Serial.begin(115200);
+    Serial.begin(9600);
     Serial.println("Starting!!!");
 
     for (int i=0; i<8; i++) {
