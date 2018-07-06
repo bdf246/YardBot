@@ -227,7 +227,8 @@ void UpdateDisplay(CONTROLCONTEXT_ST & controlContext, MOTORSTATE_ST & motor) {
 
 #define STR_LEN 10
 bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
-    bool anyData=false;
+    bool rv=false;
+    static bool anyData=false;
 
     static char str[STR_LEN] = "";
     static int idx = 0;
@@ -243,8 +244,15 @@ bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
     // Serial.println("E");
     while (btSerial.available()) {
         // Serial.println("Ei");
-        if (idx < (STR_LEN-1)) {
+        if (idx > (STR_LEN-2)) {
+            // Bad data coming through that exceeded length.
+            // Restart string:
+            idx = 0;
+            str[0] = '\0';
+        }
+        else {
             char ch = btSerial.read();
+            // if (idx == 0) Serial.write("\r\n");
             // Serial.write(ch);
             str[idx++] = ch;
             if (ch == ' ') {
@@ -300,10 +308,13 @@ bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
                 idx = 0;
                 str[0] = '\0';
             }
+            anyData=true;
         }
-        anyData=true;
     }
     // Serial.println("Eo");
+
+    // Save the return code.
+    rv = anyData;
 
     unsigned long curTime = millis();
 
@@ -342,6 +353,9 @@ bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
             // if (curMaxspeedStr[0] != '\0')       pControlContext->autoParams.maxSpeed = atoi(&(curMaxspeedStr[1]));
             // if (curMinspeedStr[0] != '\0')       pControlContext->autoParams.minSpeed = atoi(&(curMinspeedStr[1]));
         }
+
+        // Reset flag:
+        anyData=false;
     }
     else {
         // Serial.print(".");
@@ -367,7 +381,7 @@ bool updateControlContext(CONTROLCONTEXT_ST * pControlContext) {
         }
     }
 
-    return (anyData);
+    return (rv);
 }
 
 #if 0
